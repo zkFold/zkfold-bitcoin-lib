@@ -1,0 +1,62 @@
+cabal-version: 3.4
+name: zkfold-bitcoin-lib
+version: 0.1.0.0
+synopsis:
+  Framework to help interact with zkFold's validators related to Bitcoin ledger on Cardano blockchain
+
+-- description:
+license: MIT
+license-file: LICENSE
+author: Sourabh Aggarwal
+maintainer: info@zkfold.io
+-- copyright:
+category: Blockchain, Cardano, Bitcoin, Network
+build-type: Simple
+extra-doc-files: CHANGELOG.md
+
+-- extra-source-files:
+common common
+  ghc-options: -Wall
+  default-extensions:
+    DataKinds
+    DeriveAnyClass
+    DerivingStrategies
+    ExplicitNamespaces
+    OverloadedStrings
+
+library
+  import: common
+  exposed-modules:
+    ZkFold.Bitcoin.Provider.Node
+    ZkFold.Bitcoin.Provider.Node.ApiEnv
+    ZkFold.Bitcoin.Provider.Node.Class
+    ZkFold.Bitcoin.Provider.Node.Exception
+    ZkFold.Bitcoin.Provider.Node.Request
+    ZkFold.Bitcoin.Provider.Node.Response
+
+  -- other-modules:
+  -- other-extensions:
+  build-depends:
+    aeson,
+    base >=4.18.3.0 && <5,
+    bytestring,
+    http-client,
+    http-client-tls,
+    servant,
+    servant-client,
+    text,
+
+  hs-source-dirs: src
+  default-language: GHC2021
+
+test-suite zkfold-bitcoin-lib-test
+  import: common
+  default-language: GHC2021
+  -- other-modules:
+  -- other-extensions:
+  type: exitcode-stdio-1.0
+  hs-source-dirs: test
+  main-is: Main.hs
+  build-depends:
+    base,
+    zkfold-bitcoin-lib,
