@@ -33,6 +33,10 @@ library
     ZkFold.Bitcoin.Provider.Node.Exception
     ZkFold.Bitcoin.Provider.Node.Request
     ZkFold.Bitcoin.Provider.Node.Response
+    ZkFold.Bitcoin.Types
+    ZkFold.Bitcoin.Types.Internal.BlockHash
+    ZkFold.Bitcoin.Types.Internal.BlockHeader
+    ZkFold.Bitcoin.Types.Internal.Common
 
   -- other-modules:
   -- other-extensions:
