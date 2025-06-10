@@ -4,6 +4,7 @@ module ZkFold.Bitcoin.Provider.Node.Response (
 
 import Data.Aeson (FromJSON (..), Value (..), withObject, (.:))
 
+-- | Response received from node.
 newtype NodeResponse a = NodeResponse
   { response :: Either Value a
   }
