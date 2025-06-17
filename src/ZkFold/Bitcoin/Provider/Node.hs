@@ -1,8 +1,10 @@
 module ZkFold.Bitcoin.Provider.Node (
+  nodeBlockCount,
   nodeBestBlockHash,
   nodeBlockHeader,
   nodeBlockHash,
   module ZkFold.Bitcoin.Provider.Node.ApiEnv,
+  NodeProviderException (..),
 ) where
 
 import Control.Monad ((<=<))
@@ -24,9 +26,17 @@ import Servant.Client (
  )
 import ZkFold.Bitcoin.Provider.Node.ApiEnv
 import ZkFold.Bitcoin.Provider.Node.Class (ToJSONRPC (..))
+import ZkFold.Bitcoin.Provider.Node.Exception (NodeProviderException (..))
 import ZkFold.Bitcoin.Provider.Node.Request (NodeRequest (..))
 import ZkFold.Bitcoin.Provider.Node.Response (NodeResponse (..))
-import ZkFold.Bitcoin.Types (BlockHash, BlockHeader)
+import ZkFold.Bitcoin.Types.Internal.BlockHash (BlockHash)
+import ZkFold.Bitcoin.Types.Internal.BlockHeader (BlockHeader)
+
+data GetBlockCount = GetBlockCount
+
+instance ToJSONRPC GetBlockCount where
+  toMethod = const "getblockcount"
+  toParams = const Nothing
 
 data GetBestBlockHash = GetBestBlockHash
 
@@ -47,16 +57,23 @@ instance ToJSONRPC GetBlockHash where
   toParams (GetBlockHash height) = Just (Aeson.Array $ fromList [toJSON height])
 
 type NodeApi =
-  ReqBody '[JSON] (NodeRequest GetBestBlockHash) :> Post '[JSON] (NodeResponse BlockHash)
+  ReqBody '[JSON] (NodeRequest GetBlockCount) :> Post '[JSON] (NodeResponse Natural)
+    :<|> ReqBody '[JSON] (NodeRequest GetBestBlockHash) :> Post '[JSON] (NodeResponse BlockHash)
     :<|> ReqBody '[JSON] (NodeRequest GetBlockHeader) :> Post '[JSON] (NodeResponse BlockHeader)
     :<|> ReqBody '[JSON] (NodeRequest GetBlockHash) :> Post '[JSON] (NodeResponse BlockHash)
 
+blockCount :: NodeRequest GetBlockCount -> ClientM (NodeResponse Natural)
 bestBlockHash :: NodeRequest GetBestBlockHash -> ClientM (NodeResponse BlockHash)
 blockHeader :: NodeRequest GetBlockHeader -> ClientM (NodeResponse BlockHeader)
 blockHash :: NodeRequest GetBlockHash -> ClientM (NodeResponse BlockHash)
-bestBlockHash
+blockCount
+  :<|> bestBlockHash
   :<|> blockHeader
   :<|> blockHash = client @NodeApi Proxy
+
+nodeBlockCount :: NodeApiEnv -> IO Natural
+nodeBlockCount env =
+  handleNodeError "nodeBlockCount" <=< runNodeClient env $ blockCount (NodeRequest GetBlockCount)
 
 nodeBestBlockHash :: NodeApiEnv -> IO BlockHash
 nodeBestBlockHash env =
