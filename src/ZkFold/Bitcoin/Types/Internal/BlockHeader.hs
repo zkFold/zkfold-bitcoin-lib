@@ -17,14 +17,7 @@ import GHC.Natural (Natural)
 import ZkFold.Bitcoin.Types.Internal.BlockHash (BlockHash (BlockHash))
 import ZkFold.Bitcoin.Types.Internal.HexByteString (HexByteString (..), flipEndianness, hexByteStringFromBytes, hexByteStringToBytes, mkHexByteString, unsafeMkHexByteString)
 
-{- | Block header, in hex format.
-
-For example, following is block header of block 1 (just after genesis block):
-
->>> let blockHeader :: BlockHeader = "010000006fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000982051fd1e4ba744bbbe680e1fee14677ba1a3c3540bf7b1cdb606e857233e0e61bc6649ffff001d01e36299"
->>> blockHeader
-BlockHeader {unBlockHeader = "010000006fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000982051fd1e4ba744bbbe680e1fee14677ba1a3c3540bf7b1cdb606e857233e0e61bc6649ffff001d01e36299"}
--}
+-- | Block header, in hex format.
 newtype BlockHeader = BlockHeader {unBlockHeader :: HexByteString}
   deriving stock (Show, Eq, Ord)
   deriving newtype (ToJSON)
@@ -46,7 +39,7 @@ instance FromJSON BlockHeader where
 
 Following is block header of block 1 (just after genesis block).
 >>> extractPreviousBlockHash "010000006fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000982051fd1e4ba744bbbe680e1fee14677ba1a3c3540bf7b1cdb606e857233e0e61bc6649ffff001d01e36299"
-BlockHash {unBlockHash = "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f"}
+BlockHash {unBlockHash = HexByteString {unHexByteString = "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f"}}
 -}
 extractPreviousBlockHash :: BlockHeader -> BlockHash
 extractPreviousBlockHash (BlockHeader (unHexByteString -> header)) =
@@ -73,7 +66,7 @@ extractBlockTime (BlockHeader (unHexByteString -> header)) =
 {- | Obtain the block's hash from it's header.
 
 >>> obtainBlockHash "010000006fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000982051fd1e4ba744bbbe680e1fee14677ba1a3c3540bf7b1cdb606e857233e0e61bc6649ffff001d01e36299"
-BlockHash {unBlockHash = "00000000839a8e6886ab5951d76f411475428afc90947ee320161bbf18eb6048"}
+BlockHash {unBlockHash = HexByteString {unHexByteString = "00000000839a8e6886ab5951d76f411475428afc90947ee320161bbf18eb6048"}}
 -}
 obtainBlockHash :: BlockHeader -> BlockHash
 obtainBlockHash (BlockHeader header) =
