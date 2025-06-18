@@ -6,6 +6,7 @@ module ZkFold.Bitcoin.Types.Internal.HexByteString (
   hexByteStringToBytes,
   hexByteStringFromBytes,
   flipEndianness,
+  hexByteStringToNatural,
 ) where
 
 import Control.Arrow ((>>>))
@@ -18,6 +19,7 @@ import Data.Function ((&))
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
+import GHC.Natural (Natural)
 
 {- | A valid hex byte string.
 
@@ -65,3 +67,12 @@ flipEndianness (HexByteString t) =
     & reverse
     & mconcat
     & unsafeMkHexByteString
+
+-- | Obtain the natural number corresponding to the hex byte string.
+hexByteStringToNatural :: HexByteString -> Natural
+hexByteStringToNatural hbs =
+  hbs
+    & unHexByteString
+    & ("0x" <>)
+    & Text.unpack
+    & read

@@ -4,6 +4,7 @@ module ZkFold.Bitcoin.Types.Internal.BlockHeader (
   extractPreviousBlockHash,
   extractBlockTime,
   obtainBlockHash,
+  obtainBlockTarget,
 ) where
 
 import Crypto.Hash.SHA256 qualified as SHA256
@@ -15,7 +16,7 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import GHC.Natural (Natural)
 import ZkFold.Bitcoin.Types.Internal.BlockHash (BlockHash (BlockHash))
-import ZkFold.Bitcoin.Types.Internal.HexByteString (HexByteString (..), flipEndianness, hexByteStringFromBytes, hexByteStringToBytes, mkHexByteString, unsafeMkHexByteString)
+import ZkFold.Bitcoin.Types.Internal.HexByteString
 
 -- | Block header, in hex format.
 newtype BlockHeader = BlockHeader {unBlockHeader :: HexByteString}
@@ -58,10 +59,7 @@ extractBlockTime (BlockHeader (unHexByteString -> header)) =
   let blockTimeLittleEndian = unsafeMkHexByteString $ Text.take 8 $ Text.drop 136 header
    in blockTimeLittleEndian
         & flipEndianness
-        & unHexByteString
-        & ("0x" <>)
-        & Text.unpack
-        & read
+        & hexByteStringToNatural
 
 {- | Obtain the block's hash from it's header.
 
@@ -77,3 +75,17 @@ obtainBlockHash (BlockHeader header) =
         & hexByteStringFromBytes
         & flipEndianness
         & BlockHash
+
+{- | Obtain the block's target from it's header.
+
+>>> obtainBlockTarget "010000006fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000982051fd1e4ba744bbbe680e1fee14677ba1a3c3540bf7b1cdb606e857233e0e61bc6649ffff001d01e36299"
+26959535291011309493156476344723991336010898738574164086137773096960
+-}
+obtainBlockTarget :: BlockHeader -> Natural
+obtainBlockTarget (BlockHeader (unHexByteString -> header)) =
+  let bits = flipEndianness $ unsafeMkHexByteString $ Text.take 8 $ Text.drop 144 header
+      (bytesToLeftT, precisionT) = Text.splitAt 2 $ unHexByteString bits
+      bytesToLeft = hexByteStringToNatural $ unsafeMkHexByteString bytesToLeftT
+      -- @bytesToLeft@ would be at least 3.
+      precisionTAppended = precisionT <> Text.replicate ((bytesToLeft - 3) & fromIntegral) "00"
+   in hexByteStringToNatural $ unsafeMkHexByteString precisionTAppended
