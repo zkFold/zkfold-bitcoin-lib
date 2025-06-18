@@ -7,6 +7,7 @@ module ZkFold.Bitcoin.Types.Internal.HexByteString (
   hexByteStringFromBytes,
   flipEndianness,
   hexByteStringToNatural,
+  hexByteStringFromNatural,
 ) where
 
 import Control.Arrow ((>>>))
@@ -20,6 +21,7 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
 import GHC.Natural (Natural)
+import Numeric (showHex)
 
 {- | A valid hex byte string.
 
@@ -76,3 +78,21 @@ hexByteStringToNatural hbs =
     & ("0x" <>)
     & Text.unpack
     & read
+
+{- | Convert a natural number to a hex byte string.
+
+>>> hexByteStringFromNatural 0
+HexByteString {unHexByteString = "00"}
+
+>>> hexByteStringFromNatural 26959535291011309493156476344723991336010898738574164086137773096960
+HexByteString {unHexByteString = "ffff0000000000000000000000000000000000000000000000000000"}
+
+>>> hexByteStringFromNatural 1
+HexByteString {unHexByteString = "01"}
+-}
+hexByteStringFromNatural :: Natural -> HexByteString
+hexByteStringFromNatural n =
+  showHex n ""
+    & Text.pack
+    & (\t -> if Text.length t `mod` 2 == 1 then "0" <> t else t)
+    & unsafeMkHexByteString
