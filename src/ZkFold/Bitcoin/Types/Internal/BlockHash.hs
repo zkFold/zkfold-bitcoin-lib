@@ -9,9 +9,9 @@ import Data.Maybe (fromMaybe)
 import Data.String (IsString (..))
 import Data.Text (Text)
 import Data.Text qualified as Text
-import ZkFold.Bitcoin.Types.Internal.Common (isHexString)
+import ZkFold.Bitcoin.Types.Internal.HexByteString
 
-newtype BlockHash = BlockHash {unBlockHash :: Text}
+newtype BlockHash = BlockHash {unBlockHash :: HexByteString}
   deriving stock (Show, Eq, Ord)
   deriving newtype (ToJSON)
 
@@ -20,7 +20,7 @@ instance IsString BlockHash where
 
 blockHashFromText :: Text -> Maybe BlockHash
 blockHashFromText t =
-  if Text.length t == 64 && isHexString t then Just (BlockHash t) else Nothing
+  mkHexByteString t >>= \hbs -> if Text.length t == 64 then Just (BlockHash hbs) else Nothing
 
 instance FromJSON BlockHash where
   parseJSON = withText "BlockHash" $ \t ->

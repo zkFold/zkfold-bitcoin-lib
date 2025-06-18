@@ -26,6 +26,7 @@ common common
     OverloadedStrings
     RecordWildCards
     RoleAnnotations
+    ViewPatterns
 
 library
   import: common
@@ -41,7 +42,7 @@ library
     ZkFold.Bitcoin.Types
     ZkFold.Bitcoin.Types.Internal.BlockHash
     ZkFold.Bitcoin.Types.Internal.BlockHeader
-    ZkFold.Bitcoin.Types.Internal.Common
+    ZkFold.Bitcoin.Types.Internal.HexByteString
     ZkFold.Bitcoin.Types.Internal.Provider
 
   -- other-modules:
@@ -49,7 +50,9 @@ library
   build-depends:
     aeson,
     base >=4.18.3.0 && <5,
+    base16-bytestring,
     bytestring,
+    cryptohash-sha256,
     deriving-aeson,
     http-client,
     http-client-tls,
