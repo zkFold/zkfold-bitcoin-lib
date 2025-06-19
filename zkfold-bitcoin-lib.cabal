@@ -21,12 +21,18 @@ common common
     DataKinds
     DeriveAnyClass
     DerivingStrategies
+    DerivingVia
     ExplicitNamespaces
     OverloadedStrings
+    RecordWildCards
+    RoleAnnotations
+    ViewPatterns
 
 library
   import: common
   exposed-modules:
+    ZkFold.Bitcoin.Class
+    ZkFold.Bitcoin.IO
     ZkFold.Bitcoin.Provider.Node
     ZkFold.Bitcoin.Provider.Node.ApiEnv
     ZkFold.Bitcoin.Provider.Node.Class
@@ -36,19 +42,25 @@ library
     ZkFold.Bitcoin.Types
     ZkFold.Bitcoin.Types.Internal.BlockHash
     ZkFold.Bitcoin.Types.Internal.BlockHeader
-    ZkFold.Bitcoin.Types.Internal.Common
+    ZkFold.Bitcoin.Types.Internal.HexByteString
+    ZkFold.Bitcoin.Types.Internal.Provider
 
   -- other-modules:
   -- other-extensions:
   build-depends:
     aeson,
     base >=4.18.3.0 && <5,
+    base16-bytestring,
     bytestring,
+    cryptohash-sha256,
+    deriving-aeson,
     http-client,
     http-client-tls,
+    mtl,
     servant,
     servant-client,
     text,
+    transformers,
 
   hs-source-dirs: src
   default-language: GHC2021
