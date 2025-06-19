@@ -7,6 +7,7 @@ module ZkFold.Bitcoin.Types (
   flipEndianness,
   hexByteStringToNatural,
   hexByteStringFromNatural,
+  resizeHexByteString,
   BlockHash,
   unBlockHash,
   blockHashFromText,

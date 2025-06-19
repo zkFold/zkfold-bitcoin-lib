@@ -8,6 +8,7 @@ module ZkFold.Bitcoin.Types.Internal.HexByteString (
   flipEndianness,
   hexByteStringToNatural,
   hexByteStringFromNatural,
+  resizeHexByteString,
 ) where
 
 import Control.Arrow ((>>>))
@@ -96,3 +97,33 @@ hexByteStringFromNatural n =
     & Text.pack
     & (\t -> if Text.length t `mod` 2 == 1 then "0" <> t else t)
     & unsafeMkHexByteString
+
+{- | Resize a `HexByteString` to the given byte size.
+
+If the target byte size is smaller than the current one, the hex byte string is truncated from the left.
+
+If the target byte size is larger than the current one, the hex byte string is padded with zeros from the left.
+
+>>> resizeHexByteString 2 (unsafeMkHexByteString "0123")
+HexByteString {unHexByteString = "0123"}
+
+>>> resizeHexByteString 4 (unsafeMkHexByteString "0123")
+HexByteString {unHexByteString = "00000123"}
+
+>>> resizeHexByteString 1 (unsafeMkHexByteString "0123")
+HexByteString {unHexByteString = "23"}
+
+>>> resizeHexByteString 0 (unsafeMkHexByteString "0123")
+HexByteString {unHexByteString = ""}
+-}
+resizeHexByteString ::
+  -- | Target byte size.
+  Natural ->
+  HexByteString ->
+  HexByteString
+resizeHexByteString (fromIntegral . (* 2) -> n) (HexByteString t)
+  | n == tlen = HexByteString t
+  | n < tlen = Text.drop (tlen - n) t & HexByteString
+  | otherwise = (Text.replicate (n - tlen) "0" <> t) & unsafeMkHexByteString
+ where
+  tlen = Text.length t
