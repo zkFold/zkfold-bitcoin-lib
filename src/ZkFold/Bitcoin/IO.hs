@@ -9,6 +9,7 @@ import ZkFold.Bitcoin.Types (BitcoinProvider (..))
 
 type role BitcoinQueryMonadIO representational
 
+-- This is not simply a wrapper around 'ReaderT BitcoinProvider IO' because its type parameter has role set to @nominal@.
 newtype BitcoinQueryMonadIO a = BitcoinQueryMonadIO {runBitcoinQueryMonadIO' :: BitcoinProvider -> IO a}
   deriving
     ( Functor
