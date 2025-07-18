@@ -3,6 +3,7 @@ module ZkFold.Bitcoin.Provider.Node (
   nodeBestBlockHash,
   nodeBlockHeader,
   nodeBlockHash,
+  nodeSubmitTx,
   module ZkFold.Bitcoin.Provider.Node.ApiEnv,
   NodeProviderException (..),
 ) where
@@ -10,8 +11,14 @@ module ZkFold.Bitcoin.Provider.Node (
 import Control.Monad ((<=<))
 import Data.Aeson (ToJSON (..))
 import Data.Aeson qualified as Aeson
+import Data.ByteString.Base16 qualified as BS16
+import Data.Bytes.Put (runPutS)
+import Data.Bytes.Serial (Serial (serialize))
+import Data.Function ((&))
 import Data.Proxy (Proxy (..))
+import Data.Text.Encoding (decodeUtf8)
 import GHC.IsList (IsList (..))
+import Haskoin (Tx, TxHash)
 import Servant.API (
   JSON,
   Post,
@@ -56,11 +63,17 @@ instance ToJSONRPC GetBlockHash where
   toMethod = const "getblockhash"
   toParams (GetBlockHash height) = Just (Aeson.Array $ fromList [toJSON height])
 
+newtype SubmitTx = SubmitTx Tx
+instance ToJSONRPC SubmitTx where
+  toMethod = const "sendrawtransaction"
+  toParams (SubmitTx tx) = Just (Aeson.Array $ fromList [serialize tx & runPutS & BS16.encode & decodeUtf8 & Aeson.String])
+
 type NodeApi =
   ReqBody '[JSON] (NodeRequest GetBlockCount) :> Post '[JSON] (NodeResponse BlockHeight)
     :<|> ReqBody '[JSON] (NodeRequest GetBestBlockHash) :> Post '[JSON] (NodeResponse BlockHash)
     :<|> ReqBody '[JSON] (NodeRequest GetBlockHeader) :> Post '[JSON] (NodeResponse BlockHeader)
     :<|> ReqBody '[JSON] (NodeRequest GetBlockHash) :> Post '[JSON] (NodeResponse BlockHash)
+    :<|> ReqBody '[JSON] (NodeRequest SubmitTx) :> Post '[JSON] (NodeResponse TxHash)
 
 blockCount :: NodeRequest GetBlockCount -> ClientM (NodeResponse BlockHeight)
 bestBlockHash :: NodeRequest GetBestBlockHash -> ClientM (NodeResponse BlockHash)
@@ -69,7 +82,8 @@ blockHash :: NodeRequest GetBlockHash -> ClientM (NodeResponse BlockHash)
 blockCount
   :<|> bestBlockHash
   :<|> blockHeader
-  :<|> blockHash = client @NodeApi Proxy
+  :<|> blockHash
+  :<|> submitTx = client @NodeApi Proxy
 
 nodeBlockCount :: NodeApiEnv -> IO BlockHeight
 nodeBlockCount env =
@@ -86,3 +100,8 @@ nodeBlockHeader env givenBlockHash =
 nodeBlockHash :: NodeApiEnv -> BlockHeight -> IO BlockHash
 nodeBlockHash env givenHeight =
   handleNodeError "nodeBlockHash" <=< runNodeClient env $ blockHash (NodeRequest (GetBlockHash givenHeight))
+
+-- TODO: Need to test this!
+nodeSubmitTx :: NodeApiEnv -> Tx -> IO TxHash
+nodeSubmitTx env tx =
+  handleNodeError "nodeSubmitTx" <=< runNodeClient env $ submitTx (NodeRequest (SubmitTx tx))
