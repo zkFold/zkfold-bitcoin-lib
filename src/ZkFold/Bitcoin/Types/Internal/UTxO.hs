@@ -9,3 +9,4 @@ data UTxO = UTxO
   { utxoOutpoint :: OutPoint
   , utxoValue :: Word64
   }
+  deriving stock (Show)

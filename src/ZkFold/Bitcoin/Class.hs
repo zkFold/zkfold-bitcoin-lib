@@ -3,6 +3,7 @@ module ZkFold.Bitcoin.Class (
   BitcoinBuilderQueryMonad (..),
 ) where
 
+import Data.Text (Text)
 import Haskoin (Address)
 import ZkFold.Bitcoin.Types
 
@@ -23,4 +24,6 @@ class BitcoinQueryMonad m where
 
 class BitcoinBuilderQueryMonad m where
   {-# MINIMAL utxosAtAddress #-}
-  utxosAtAddress :: Address -> m [UTxO]
+
+  -- TODO: Need a type for end address.
+  utxosAtAddress :: Text -> m [UTxO]
