@@ -9,6 +9,7 @@ import Data.Maybe (fromMaybe)
 import Data.String (IsString (..))
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Servant.API (ToHttpApiData (..))
 import ZkFold.Bitcoin.Types.Internal.HexByteString
 
 newtype BlockHash = BlockHash {unBlockHash :: HexByteString}
@@ -21,6 +22,15 @@ instance IsString BlockHash where
 blockHashFromText :: Text -> Maybe BlockHash
 blockHashFromText t =
   mkHexByteString t >>= \hbs -> if Text.length t == 64 then Just (BlockHash hbs) else Nothing
+
+instance Read BlockHash where
+  readsPrec _ str =
+    case blockHashFromText (Text.pack str) of
+      Just bh -> [(bh, "")]
+      Nothing -> []
+
+instance ToHttpApiData BlockHash where
+  toUrlPiece = unHexByteString . unBlockHash
 
 instance FromJSON BlockHash where
   parseJSON = withText "BlockHash" $ \t ->

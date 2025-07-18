@@ -22,9 +22,15 @@ module ZkFold.Bitcoin.Types (
   BitcoinProviderConfig (..),
   BitcoinProviderConfigNode (..),
   providerFromConfig,
+  module ZkFold.Bitcoin.Types.Internal.UTxO,
+  module ZkFold.Bitcoin.Types.Internal.NetworkId,
+  BlockHeight,
 ) where
 
 import ZkFold.Bitcoin.Types.Internal.BlockHash
 import ZkFold.Bitcoin.Types.Internal.BlockHeader
+import ZkFold.Bitcoin.Types.Internal.BlockHeight
 import ZkFold.Bitcoin.Types.Internal.HexByteString
+import ZkFold.Bitcoin.Types.Internal.NetworkId
 import ZkFold.Bitcoin.Types.Internal.Provider
+import ZkFold.Bitcoin.Types.Internal.UTxO

@@ -7,10 +7,10 @@ module ZkFold.Bitcoin.Types.Internal.Provider (
 
 import Data.Char (toLower)
 import Deriving.Aeson
-import GHC.Natural (Natural)
 import ZkFold.Bitcoin.Provider.Node
 import ZkFold.Bitcoin.Types.Internal.BlockHash (BlockHash)
 import ZkFold.Bitcoin.Types.Internal.BlockHeader (BlockHeader)
+import ZkFold.Bitcoin.Types.Internal.BlockHeight (BlockHeight)
 
 data LowerFirst
 instance StringModifier LowerFirst where
@@ -34,10 +34,10 @@ newtype BitcoinProviderConfig
 
 -- | Bitcoin provider.
 data BitcoinProvider = BitcoinProvider
-  { bpBlockCount :: IO Natural
+  { bpBlockCount :: IO BlockHeight
   , bpBestBlockHash :: IO BlockHash
   , bpBlockHeader :: BlockHash -> IO BlockHeader
-  , bpBlockHash :: Natural -> IO BlockHash
+  , bpBlockHash :: BlockHeight -> IO BlockHash
   }
 
 -- | Create a 'BitcoinProvider' from a 'BitcoinProviderConfig'.

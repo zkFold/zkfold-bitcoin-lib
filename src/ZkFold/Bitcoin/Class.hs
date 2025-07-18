@@ -1,13 +1,16 @@
-module ZkFold.Bitcoin.Class (BitcoinQueryMonad (..)) where
+module ZkFold.Bitcoin.Class (
+  BitcoinQueryMonad (..),
+  BitcoinBuilderQueryMonad (..),
+) where
 
-import GHC.Natural (Natural)
+import Haskoin (Address)
 import ZkFold.Bitcoin.Types
 
 class BitcoinQueryMonad m where
   {-# MINIMAL blockCount, bestBlockHash, blockHeader, blockHash #-}
 
   -- | Get the height of the most-work fully-validated chain.
-  blockCount :: m Natural
+  blockCount :: m BlockHeight
 
   -- | Get the 'BlockHash' of the best block.
   bestBlockHash :: m BlockHash
@@ -16,4 +19,8 @@ class BitcoinQueryMonad m where
   blockHeader :: BlockHash -> m BlockHeader
 
   -- | Get the 'BlockHash' of a given block height.
-  blockHash :: Natural -> m BlockHash
+  blockHash :: BlockHeight -> m BlockHash
+
+class BitcoinBuilderQueryMonad m where
+  {-# MINIMAL utxosAtAddress #-}
+  utxosAtAddress :: Address -> m [UTxO]

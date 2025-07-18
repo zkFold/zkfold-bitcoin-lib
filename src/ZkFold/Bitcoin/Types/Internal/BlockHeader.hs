@@ -30,6 +30,12 @@ blockHeaderFromText :: Text -> Maybe BlockHeader
 blockHeaderFromText t =
   mkHexByteString t >>= \hbs -> if Text.length t == 160 then Just (BlockHeader hbs) else Nothing
 
+instance Read BlockHeader where
+  readsPrec _ str =
+    case blockHeaderFromText (Text.pack str) of
+      Just bh -> [(bh, "")]
+      Nothing -> []
+
 instance FromJSON BlockHeader where
   parseJSON = withText "BlockHeader" $ \t ->
     case blockHeaderFromText t of

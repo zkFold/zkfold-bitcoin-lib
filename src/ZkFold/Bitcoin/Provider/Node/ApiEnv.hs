@@ -8,34 +8,14 @@ module ZkFold.Bitcoin.Provider.Node.ApiEnv (
 
 import Control.Exception (throwIO)
 import Data.Aeson (Value)
-import Data.ByteString.Char8 qualified as BS8
 import Data.Text (Text)
-import Network.HTTP.Client qualified as HttpClient
-import Network.HTTP.Client.TLS qualified as HttpClientTLS
 import Servant.Client (
   ClientEnv,
-  Scheme (..),
  )
 import Servant.Client qualified as Servant
+import ZkFold.Bitcoin.Provider.Common (newServantClientEnvWithBasicAuth)
 import ZkFold.Bitcoin.Provider.Node.Exception (NodeProviderException (..))
 import ZkFold.Bitcoin.Provider.Node.Response (NodeResponse (..))
-
-newServantClientEnvWithBasicAuth :: String -> String -> String -> IO ClientEnv
-newServantClientEnvWithBasicAuth username password baseUrl = do
-  url <- Servant.parseBaseUrl baseUrl
-  manager <-
-    if Servant.baseUrlScheme url == Https
-      then
-        HttpClient.newManager $
-          mkAuthManager HttpClientTLS.tlsManagerSettings
-      else
-        HttpClient.newManager $ mkAuthManager HttpClient.defaultManagerSettings
-  return $ Servant.mkClientEnv manager url
- where
-  mkAuthManager manager =
-    manager
-      { HttpClient.managerModifyRequest = return . HttpClient.applyBasicAuth (BS8.pack username) (BS8.pack password)
-      }
 
 newtype NodeApiEnv = NodeApiEnv ClientEnv
 
