@@ -33,7 +33,10 @@ import Servant.Client (
 import Servant.Client qualified as Servant
 import Text.Read (readMaybe)
 import ZkFold.Bitcoin.Provider.Common (newServantClientEnv)
-import ZkFold.Bitcoin.Types
+import ZkFold.Bitcoin.Types.Internal.BlockHash
+import ZkFold.Bitcoin.Types.Internal.BlockHeader
+import ZkFold.Bitcoin.Types.Internal.BlockHeight
+import ZkFold.Bitcoin.Types.Internal.NetworkId (NetworkId (..))
 
 newtype MempoolSpaceApiEnv = MempoolSpaceApiEnv ClientEnv
 
@@ -50,7 +53,7 @@ newMempoolSpaceApiEnv nid = do
       ( case nid of
           Mainnet -> "https://mempool.space/api"
           Testnet3 -> "https://mempool.space/testnet/api"
-          Testnet4 -> "https://mempool.space/testnet4/api/v1"
+          Testnet4 -> "https://mempool.space/testnet4/api"
       )
   return $ MempoolSpaceApiEnv cEnv
 

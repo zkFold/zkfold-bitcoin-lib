@@ -5,17 +5,14 @@ module ZkFold.Bitcoin.Types.Internal.Provider (
   providerFromConfig,
 ) where
 
-import Data.Char (toLower)
 import Deriving.Aeson
+import ZkFold.Bitcoin.Provider.MempoolSpace
 import ZkFold.Bitcoin.Provider.Node
 import ZkFold.Bitcoin.Types.Internal.BlockHash (BlockHash)
 import ZkFold.Bitcoin.Types.Internal.BlockHeader (BlockHeader)
 import ZkFold.Bitcoin.Types.Internal.BlockHeight (BlockHeight)
-
-data LowerFirst
-instance StringModifier LowerFirst where
-  getStringModifier "" = ""
-  getStringModifier (c : cs) = toLower c : cs
+import ZkFold.Bitcoin.Types.Internal.Common (LowerFirst)
+import ZkFold.Bitcoin.Types.Internal.NetworkId (NetworkId)
 
 -- | Bitcoin provider configuration for connecting to a node.
 data BitcoinProviderConfigNode = BitcoinProviderConfigNode
@@ -27,8 +24,9 @@ data BitcoinProviderConfigNode = BitcoinProviderConfigNode
   deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "bpcn", LowerFirst]] BitcoinProviderConfigNode
 
 -- | Bitcoin provider configuration.
-newtype BitcoinProviderConfig
+data BitcoinProviderConfig
   = BPCNode BitcoinProviderConfigNode
+  | BPCMempoolSpace NetworkId
   deriving stock (Generic)
   deriving (FromJSON, ToJSON) via CustomJSON '[ConstructorTagModifier '[StripPrefix "BPC", LowerFirst]] BitcoinProviderConfig
 
@@ -50,4 +48,13 @@ providerFromConfig (BPCNode (BitcoinProviderConfigNode{..})) = do
       , bpBestBlockHash = nodeBestBlockHash env
       , bpBlockHeader = nodeBlockHeader env
       , bpBlockHash = nodeBlockHash env
+      }
+providerFromConfig (BPCMempoolSpace nid) = do
+  env <- newMempoolSpaceApiEnv nid
+  pure $
+    BitcoinProvider
+      { bpBlockCount = mempoolSpaceBlockCount env
+      , bpBestBlockHash = mempoolSpaceBlockTipHash env
+      , bpBlockHeader = mempoolSpaceBlockHeader env
+      , bpBlockHash = mempoolSpaceBlockHash env
       }
