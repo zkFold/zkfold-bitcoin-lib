@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-orphans #-}
+
 module ZkFold.Bitcoin.Provider.MempoolSpace (
   MempoolSpaceApiEnv,
   mempoolSpaceApiEnvToClientEnv,
@@ -21,7 +23,6 @@ import Data.Data (Typeable)
 import Data.Proxy (Proxy (..))
 import Data.Text (Text)
 import Data.Typeable (typeOf)
-import Data.Word (Word32, Word64)
 import Deriving.Aeson
 import Haskoin (OutPoint (..), Tx, TxHash)
 import Network.HTTP.Media qualified as M
@@ -49,7 +50,7 @@ import ZkFold.Bitcoin.Provider.Common (newServantClientEnv)
 import ZkFold.Bitcoin.Types.Internal.BlockHash
 import ZkFold.Bitcoin.Types.Internal.BlockHeader
 import ZkFold.Bitcoin.Types.Internal.BlockHeight
-import ZkFold.Bitcoin.Types.Internal.Common (LowerFirst)
+import ZkFold.Bitcoin.Types.Internal.Common (LowerFirst, OutputIx, Satoshi)
 import ZkFold.Bitcoin.Types.Internal.NetworkId (NetworkId (..))
 import ZkFold.Bitcoin.Types.Internal.UTxO
 
@@ -105,10 +106,8 @@ instance MimeRender PlainText Tx where
 
 data MempoolSpaceUtxo = MempoolSpaceUtxo
   { msuTxid :: TxHash
-  , -- TODO: Type synonym for OutputIx.
-    msuVout :: Word32
-  , -- TODO: Type synonym for Satoshis.
-    msuValue :: Word64
+  , msuVout :: OutputIx
+  , msuValue :: Satoshi
   }
   deriving stock (Show, Generic)
   deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "msu", LowerFirst]] MempoolSpaceUtxo
@@ -162,6 +161,7 @@ mempoolSpaceUtxosAtAddress :: MempoolSpaceApiEnv -> Text -> IO [UTxO]
 mempoolSpaceUtxosAtAddress env addr =
   handleMempoolSpaceError "mempoolSpaceUtxosAtAddress" . fmap (fmap utxoFromMempoolSpaceUtxo) <=< runMempoolSpaceClient env $ addressUtxos addr
 
+-- TODO: Need to test this!
 mempoolSpaceSubmitTx :: MempoolSpaceApiEnv -> Tx -> IO TxHash
 mempoolSpaceSubmitTx env tx =
   handleMempoolSpaceError "mempoolSpaceSubmitTx" . fmap unPlainTextRead <=< runMempoolSpaceClient env $ txHash tx

@@ -19,7 +19,6 @@ import Data.Function ((&))
 import Data.Proxy (Proxy (..))
 import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8)
-import Data.Word (Word32, Word64)
 import Deriving.Aeson
 import GHC.IsList (IsList (..))
 import Haskoin (OutPoint (..), Tx, TxHash)
@@ -42,7 +41,7 @@ import ZkFold.Bitcoin.Provider.Node.Response (NodeResponse (..))
 import ZkFold.Bitcoin.Types.Internal.BlockHash (BlockHash)
 import ZkFold.Bitcoin.Types.Internal.BlockHeader (BlockHeader)
 import ZkFold.Bitcoin.Types.Internal.BlockHeight (BlockHeight)
-import ZkFold.Bitcoin.Types.Internal.Common (LowerFirst)
+import ZkFold.Bitcoin.Types.Internal.Common (LowerFirst, OutputIx, Satoshi)
 import ZkFold.Bitcoin.Types.Internal.UTxO
 
 data GetBlockCount = GetBlockCount
@@ -87,7 +86,7 @@ instance ToJSONRPC ScanTxOutSet where
             ]
       )
 
-data ScanTxOutSetResponse = ScanTxOutSetResponse
+newtype ScanTxOutSetResponse = ScanTxOutSetResponse
   { srUnspents :: [NodeUtxo]
   }
   deriving stock (Show, Generic)
@@ -95,10 +94,8 @@ data ScanTxOutSetResponse = ScanTxOutSetResponse
 
 data NodeUtxo = NodeUtxo
   { nuTxid :: TxHash
-  , -- TODO: Type synonym for OutputIx.
-    nuVout :: Word32
-  , -- TODO: Type synonym for Satoshis.
-    nuAmount :: Word64
+  , nuVout :: OutputIx
+  , nuAmount :: Satoshi
   }
   deriving stock (Show, Generic)
   deriving (FromJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "nu", LowerFirst]] NodeUtxo
