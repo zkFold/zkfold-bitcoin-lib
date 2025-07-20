@@ -36,6 +36,14 @@ instance BitcoinQueryMonad BitcoinQueryMonadIO where
     provider <- ask
     ioToBitcoinQueryMonadIO $ bpBlockHash provider height
 
+  utxosAtAddress addr = do
+    provider <- ask
+    ioToBitcoinQueryMonadIO $ bpUtxosAtAddress provider addr
+
+  submitTx tx = do
+    provider <- ask
+    ioToBitcoinQueryMonadIO $ bpSubmitTx provider tx
+
 {- | INTERNAL USAGE ONLY
 
 Do not expose a 'MonadIO' instance for 'BitcoinQueryMonadIO', as it is not safe to run arbitrary IO actions in the context of a 'BitcoinQueryMonadIO' action.

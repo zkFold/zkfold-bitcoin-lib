@@ -4,6 +4,7 @@ module ZkFold.Bitcoin.Provider.Node (
   nodeBlockHeader,
   nodeBlockHash,
   nodeSubmitTx,
+  nodeUtxosAtAddress,
   module ZkFold.Bitcoin.Provider.Node.ApiEnv,
   NodeProviderException (..),
 ) where
@@ -16,9 +17,12 @@ import Data.Bytes.Put (runPutS)
 import Data.Bytes.Serial (Serial (serialize))
 import Data.Function ((&))
 import Data.Proxy (Proxy (..))
+import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8)
+import Data.Word (Word32, Word64)
+import Deriving.Aeson
 import GHC.IsList (IsList (..))
-import Haskoin (Tx, TxHash)
+import Haskoin (OutPoint (..), Tx, TxHash)
 import Servant.API (
   JSON,
   Post,
@@ -38,6 +42,8 @@ import ZkFold.Bitcoin.Provider.Node.Response (NodeResponse (..))
 import ZkFold.Bitcoin.Types.Internal.BlockHash (BlockHash)
 import ZkFold.Bitcoin.Types.Internal.BlockHeader (BlockHeader)
 import ZkFold.Bitcoin.Types.Internal.BlockHeight (BlockHeight)
+import ZkFold.Bitcoin.Types.Internal.Common (LowerFirst)
+import ZkFold.Bitcoin.Types.Internal.UTxO
 
 data GetBlockCount = GetBlockCount
 
@@ -68,22 +74,58 @@ instance ToJSONRPC SubmitTx where
   toMethod = const "sendrawtransaction"
   toParams (SubmitTx tx) = Just (Aeson.Array $ fromList [serialize tx & runPutS & BS16.encode & decodeUtf8 & Aeson.String])
 
+newtype ScanTxOutSet = ScanTxOutSet Text
+
+instance ToJSONRPC ScanTxOutSet where
+  toMethod = const "scantxoutset"
+  toParams (ScanTxOutSet addr) =
+    Just
+      ( Aeson.Array $
+          fromList
+            [ Aeson.String "start"
+            , Aeson.Array $ fromList [Aeson.String $ "addr(" <> addr <> ")"]
+            ]
+      )
+
+data ScanTxOutSetResponse = ScanTxOutSetResponse
+  { srUnspents :: [NodeUtxo]
+  }
+  deriving stock (Show, Generic)
+  deriving (FromJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "sr", LowerFirst]] ScanTxOutSetResponse
+
+data NodeUtxo = NodeUtxo
+  { nuTxid :: TxHash
+  , -- TODO: Type synonym for OutputIx.
+    nuVout :: Word32
+  , -- TODO: Type synonym for Satoshis.
+    nuAmount :: Word64
+  }
+  deriving stock (Show, Generic)
+  deriving (FromJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "nu", LowerFirst]] NodeUtxo
+
+utxoFromNodeUtxo :: NodeUtxo -> UTxO
+utxoFromNodeUtxo (NodeUtxo txid vout amount) = UTxO (OutPoint txid vout) amount
+
 type NodeApi =
   ReqBody '[JSON] (NodeRequest GetBlockCount) :> Post '[JSON] (NodeResponse BlockHeight)
     :<|> ReqBody '[JSON] (NodeRequest GetBestBlockHash) :> Post '[JSON] (NodeResponse BlockHash)
     :<|> ReqBody '[JSON] (NodeRequest GetBlockHeader) :> Post '[JSON] (NodeResponse BlockHeader)
     :<|> ReqBody '[JSON] (NodeRequest GetBlockHash) :> Post '[JSON] (NodeResponse BlockHash)
     :<|> ReqBody '[JSON] (NodeRequest SubmitTx) :> Post '[JSON] (NodeResponse TxHash)
+    :<|> ReqBody '[JSON] (NodeRequest ScanTxOutSet) :> Post '[JSON] (NodeResponse ScanTxOutSetResponse)
 
 blockCount :: NodeRequest GetBlockCount -> ClientM (NodeResponse BlockHeight)
 bestBlockHash :: NodeRequest GetBestBlockHash -> ClientM (NodeResponse BlockHash)
 blockHeader :: NodeRequest GetBlockHeader -> ClientM (NodeResponse BlockHeader)
 blockHash :: NodeRequest GetBlockHash -> ClientM (NodeResponse BlockHash)
+submitTx :: NodeRequest SubmitTx -> ClientM (NodeResponse TxHash)
+scanTxOutSet :: NodeRequest ScanTxOutSet -> ClientM (NodeResponse ScanTxOutSetResponse)
 blockCount
   :<|> bestBlockHash
   :<|> blockHeader
   :<|> blockHash
-  :<|> submitTx = client @NodeApi Proxy
+  :<|> submitTx
+  :<|> scanTxOutSet = client @NodeApi Proxy
 
 nodeBlockCount :: NodeApiEnv -> IO BlockHeight
 nodeBlockCount env =
@@ -105,3 +147,8 @@ nodeBlockHash env givenHeight =
 nodeSubmitTx :: NodeApiEnv -> Tx -> IO TxHash
 nodeSubmitTx env tx =
   handleNodeError "nodeSubmitTx" <=< runNodeClient env $ submitTx (NodeRequest (SubmitTx tx))
+
+nodeUtxosAtAddress :: NodeApiEnv -> Text -> IO [UTxO]
+nodeUtxosAtAddress env addr = do
+  ScanTxOutSetResponse{..} <- handleNodeError "nodeUtxosAtAddress" <=< runNodeClient env $ scanTxOutSet (NodeRequest (ScanTxOutSet addr))
+  pure $ fmap utxoFromNodeUtxo srUnspents

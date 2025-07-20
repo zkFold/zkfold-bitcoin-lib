@@ -5,7 +5,9 @@ module ZkFold.Bitcoin.Types.Internal.Provider (
   providerFromConfig,
 ) where
 
+import Data.Text (Text)
 import Deriving.Aeson
+import Haskoin (Tx, TxHash)
 import ZkFold.Bitcoin.Provider.MempoolSpace
 import ZkFold.Bitcoin.Provider.Node
 import ZkFold.Bitcoin.Types.Internal.BlockHash (BlockHash)
@@ -13,6 +15,7 @@ import ZkFold.Bitcoin.Types.Internal.BlockHeader (BlockHeader)
 import ZkFold.Bitcoin.Types.Internal.BlockHeight (BlockHeight)
 import ZkFold.Bitcoin.Types.Internal.Common (LowerFirst)
 import ZkFold.Bitcoin.Types.Internal.NetworkId (NetworkId)
+import ZkFold.Bitcoin.Types.Internal.UTxO (UTxO)
 
 -- | Bitcoin provider configuration for connecting to a node.
 data BitcoinProviderConfigNode = BitcoinProviderConfigNode
@@ -36,6 +39,8 @@ data BitcoinProvider = BitcoinProvider
   , bpBestBlockHash :: IO BlockHash
   , bpBlockHeader :: BlockHash -> IO BlockHeader
   , bpBlockHash :: BlockHeight -> IO BlockHash
+  , bpUtxosAtAddress :: Text -> IO [UTxO]
+  , bpSubmitTx :: Tx -> IO TxHash
   }
 
 -- | Create a 'BitcoinProvider' from a 'BitcoinProviderConfig'.
@@ -48,6 +53,8 @@ providerFromConfig (BPCNode (BitcoinProviderConfigNode{..})) = do
       , bpBestBlockHash = nodeBestBlockHash env
       , bpBlockHeader = nodeBlockHeader env
       , bpBlockHash = nodeBlockHash env
+      , bpUtxosAtAddress = nodeUtxosAtAddress env
+      , bpSubmitTx = nodeSubmitTx env
       }
 providerFromConfig (BPCMempoolSpace nid) = do
   env <- newMempoolSpaceApiEnv nid
@@ -57,4 +64,6 @@ providerFromConfig (BPCMempoolSpace nid) = do
       , bpBestBlockHash = mempoolSpaceBlockTipHash env
       , bpBlockHeader = mempoolSpaceBlockHeader env
       , bpBlockHash = mempoolSpaceBlockHash env
+      , bpUtxosAtAddress = mempoolSpaceUtxosAtAddress env
+      , bpSubmitTx = mempoolSpaceSubmitTx env
       }
