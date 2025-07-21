@@ -124,16 +124,6 @@ type MempoolSpaceApi =
     :<|> "address" :> Capture "address" Text :> "utxo" :> Get '[JSON] [MempoolSpaceUtxo]
     :<|> "tx" :> ReqBody '[PlainText] Tx :> Post '[TextPlain] (PlainTextRead TxHash)
 
--- instance ToHttpApiData (NetworkId, Address) where
---   toUrlPiece (nid, addr) =
---     let net = networkFromId nid
---      -- TODO: How to avoid fromJust?
---      in addrToText net addr & fromJust
---    where
---     networkFromId :: NetworkId -> Network
---     networkFromId Mainnet = btc
---     networkFromId Testnet3 = btcTest
-
 blockCount :: ClientM (PlainTextRead BlockHeight)
 blockTipHash :: ClientM (PlainTextRead BlockHash)
 blockHeader :: BlockHash -> ClientM (PlainTextRead BlockHeader)

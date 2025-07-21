@@ -3,8 +3,11 @@ module ZkFold.Bitcoin.IO (
   runBitcoinQueryMonadIO,
 ) where
 
+import Control.Exception (catch, throwIO)
+import Control.Monad.Error.Class
 import Control.Monad.Reader
 import ZkFold.Bitcoin.Class
+import ZkFold.Bitcoin.Errors
 import ZkFold.Bitcoin.Types (BitcoinProvider (..))
 
 type role BitcoinQueryMonadIO representational
@@ -18,6 +21,15 @@ newtype BitcoinQueryMonadIO a = BitcoinQueryMonadIO {runBitcoinQueryMonadIO' :: 
     , MonadReader BitcoinProvider
     )
     via ReaderT BitcoinProvider IO
+
+instance MonadError BitcoinQueryMonadException BitcoinQueryMonadIO where
+  throwError = ioToBitcoinQueryMonadIO . throwIO
+  catchError action handler = do
+    env <- ask
+    ioToBitcoinQueryMonadIO $
+      catch
+        (runBitcoinQueryMonadIO' action env)
+        (\err -> handler err `runBitcoinQueryMonadIO'` env)
 
 instance BitcoinQueryMonad BitcoinQueryMonadIO where
   blockCount = do

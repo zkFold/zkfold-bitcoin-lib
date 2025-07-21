@@ -2,11 +2,12 @@ module ZkFold.Bitcoin.Class (
   BitcoinQueryMonad (..),
 ) where
 
-import Data.Text (Text)
-import Haskoin (Tx, TxHash)
+import Control.Monad.Error.Class (MonadError)
+import Haskoin (Address, Tx, TxHash)
+import ZkFold.Bitcoin.Errors (BitcoinQueryMonadException)
 import ZkFold.Bitcoin.Types
 
-class BitcoinQueryMonad m where
+class (MonadError BitcoinQueryMonadException m) => BitcoinQueryMonad m where
   {-# MINIMAL blockCount, bestBlockHash, blockHeader, blockHash, utxosAtAddress, submitTx, networkId #-}
 
   -- | Get the height of the most-work fully-validated chain.
@@ -21,12 +22,10 @@ class BitcoinQueryMonad m where
   -- | Get the 'BlockHash' of a given block height.
   blockHash :: BlockHeight -> m BlockHash
 
-  -- TODO: Need a type for end address.
-
   -- | Get the 'UTxO's at a given address.
   --
   -- Note that we'll return UTxOs irrespective of number of confirmations. This can be problematic for coinbase UTxOs since they require 100 confirmations.
-  utxosAtAddress :: Text -> m [UTxO]
+  utxosAtAddress :: Address -> m [UTxO]
 
   -- | Submit (broadcast) a transaction to the Bitcoin network.
   submitTx :: Tx -> m TxHash

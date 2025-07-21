@@ -5,16 +5,17 @@ module ZkFold.Bitcoin.Types.Internal.Provider (
   providerFromConfig,
 ) where
 
-import Data.Text (Text)
+import Control.Exception (throwIO)
 import Deriving.Aeson
-import Haskoin (Tx, TxHash)
+import Haskoin (Address, Tx, TxHash, addrToText)
+import ZkFold.Bitcoin.Errors (BitcoinQueryMonadException (..))
 import ZkFold.Bitcoin.Provider.MempoolSpace
 import ZkFold.Bitcoin.Provider.Node
 import ZkFold.Bitcoin.Types.Internal.BlockHash (BlockHash)
 import ZkFold.Bitcoin.Types.Internal.BlockHeader (BlockHeader)
 import ZkFold.Bitcoin.Types.Internal.BlockHeight (BlockHeight)
 import ZkFold.Bitcoin.Types.Internal.Common (LowerFirst)
-import ZkFold.Bitcoin.Types.Internal.NetworkId (NetworkId)
+import ZkFold.Bitcoin.Types.Internal.NetworkId (NetworkId, networkFromId)
 import ZkFold.Bitcoin.Types.Internal.UTxO (UTxO)
 
 -- | Bitcoin provider configuration for connecting to a node.
@@ -46,7 +47,7 @@ data BitcoinProvider = BitcoinProvider
   , bpBestBlockHash :: IO BlockHash
   , bpBlockHeader :: BlockHash -> IO BlockHeader
   , bpBlockHash :: BlockHeight -> IO BlockHash
-  , bpUtxosAtAddress :: Text -> IO [UTxO]
+  , bpUtxosAtAddress :: Address -> IO [UTxO]
   , bpSubmitTx :: Tx -> IO TxHash
   , bpNetworkId :: NetworkId
   }
@@ -61,7 +62,11 @@ providerFromConfig (BPCNode (BitcoinProviderConfigNode{..})) = do
       , bpBestBlockHash = nodeBestBlockHash env
       , bpBlockHeader = nodeBlockHeader env
       , bpBlockHash = nodeBlockHash env
-      , bpUtxosAtAddress = nodeUtxosAtAddress env
+      , bpUtxosAtAddress = \addr -> do
+          let addrText = addrToText (networkFromId bpcnNetworkId) addr
+          case addrText of
+            Nothing -> throwIO $ UnableToSerializeAddress addr bpcnNetworkId
+            Just addrText' -> nodeUtxosAtAddress env addrText'
       , bpSubmitTx = nodeSubmitTx env
       , bpNetworkId = bpcnNetworkId
       }
@@ -73,7 +78,11 @@ providerFromConfig (BPCMempoolSpace (BitcoinProviderConfigMempoolSpace{..})) = d
       , bpBestBlockHash = mempoolSpaceBlockTipHash env
       , bpBlockHeader = mempoolSpaceBlockHeader env
       , bpBlockHash = mempoolSpaceBlockHash env
-      , bpUtxosAtAddress = mempoolSpaceUtxosAtAddress env
+      , bpUtxosAtAddress = \addr -> do
+          let addrText = addrToText (networkFromId bpcmsNetworkId) addr
+          case addrText of
+            Nothing -> throwIO $ UnableToSerializeAddress addr bpcmsNetworkId
+            Just addrText' -> mempoolSpaceUtxosAtAddress env addrText'
       , bpSubmitTx = mempoolSpaceSubmitTx env
       , bpNetworkId = bpcmsNetworkId
       }
