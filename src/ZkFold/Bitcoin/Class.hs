@@ -7,7 +7,7 @@ import Haskoin (Tx, TxHash)
 import ZkFold.Bitcoin.Types
 
 class BitcoinQueryMonad m where
-  {-# MINIMAL blockCount, bestBlockHash, blockHeader, blockHash, utxosAtAddress, submitTx #-}
+  {-# MINIMAL blockCount, bestBlockHash, blockHeader, blockHash, utxosAtAddress, submitTx, networkId #-}
 
   -- | Get the height of the most-work fully-validated chain.
   blockCount :: m BlockHeight
@@ -30,3 +30,6 @@ class BitcoinQueryMonad m where
 
   -- | Submit (broadcast) a transaction to the Bitcoin network.
   submitTx :: Tx -> m TxHash
+
+  -- | Get the 'NetworkId' of the Bitcoin network.
+  networkId :: m NetworkId

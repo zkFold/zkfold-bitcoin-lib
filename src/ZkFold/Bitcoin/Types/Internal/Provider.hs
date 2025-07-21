@@ -22,14 +22,21 @@ data BitcoinProviderConfigNode = BitcoinProviderConfigNode
   { bpcnUsername :: !String
   , bpcnPassword :: !String
   , bpcnUrl :: !String
+  , bpcnNetworkId :: !NetworkId
   }
   deriving stock (Generic)
   deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "bpcn", LowerFirst]] BitcoinProviderConfigNode
 
+newtype BitcoinProviderConfigMempoolSpace = BitcoinProviderConfigMempoolSpace
+  { bpcmsNetworkId :: NetworkId
+  }
+  deriving stock (Generic)
+  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "bpcms", LowerFirst]] BitcoinProviderConfigMempoolSpace
+
 -- | Bitcoin provider configuration.
 data BitcoinProviderConfig
   = BPCNode BitcoinProviderConfigNode
-  | BPCMempoolSpace NetworkId
+  | BPCMempoolSpace BitcoinProviderConfigMempoolSpace
   deriving stock (Generic)
   deriving (FromJSON, ToJSON) via CustomJSON '[ConstructorTagModifier '[StripPrefix "BPC", LowerFirst]] BitcoinProviderConfig
 
@@ -41,6 +48,7 @@ data BitcoinProvider = BitcoinProvider
   , bpBlockHash :: BlockHeight -> IO BlockHash
   , bpUtxosAtAddress :: Text -> IO [UTxO]
   , bpSubmitTx :: Tx -> IO TxHash
+  , bpNetworkId :: NetworkId
   }
 
 -- | Create a 'BitcoinProvider' from a 'BitcoinProviderConfig'.
@@ -55,9 +63,10 @@ providerFromConfig (BPCNode (BitcoinProviderConfigNode{..})) = do
       , bpBlockHash = nodeBlockHash env
       , bpUtxosAtAddress = nodeUtxosAtAddress env
       , bpSubmitTx = nodeSubmitTx env
+      , bpNetworkId = bpcnNetworkId
       }
-providerFromConfig (BPCMempoolSpace nid) = do
-  env <- newMempoolSpaceApiEnv nid
+providerFromConfig (BPCMempoolSpace (BitcoinProviderConfigMempoolSpace{..})) = do
+  env <- newMempoolSpaceApiEnv bpcmsNetworkId
   pure $
     BitcoinProvider
       { bpBlockCount = mempoolSpaceBlockCount env
@@ -66,4 +75,5 @@ providerFromConfig (BPCMempoolSpace nid) = do
       , bpBlockHash = mempoolSpaceBlockHash env
       , bpUtxosAtAddress = mempoolSpaceUtxosAtAddress env
       , bpSubmitTx = mempoolSpaceSubmitTx env
+      , bpNetworkId = bpcmsNetworkId
       }

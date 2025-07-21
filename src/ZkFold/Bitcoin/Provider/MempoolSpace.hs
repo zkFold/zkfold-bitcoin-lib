@@ -69,6 +69,7 @@ newMempoolSpaceApiEnv nid = do
       ( case nid of
           Mainnet -> "https://mempool.space/api"
           Testnet3 -> "https://mempool.space/testnet/api"
+          Regtest -> error "Regtest is not supported by mempool.space"
           -- Testnet4 -> "https://mempool.space/testnet4/api"
       )
   return $ MempoolSpaceApiEnv cEnv
