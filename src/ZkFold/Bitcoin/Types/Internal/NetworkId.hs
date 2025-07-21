@@ -11,11 +11,11 @@ data NetworkId
   = Mainnet
   | Testnet3
   | -- \| Testnet4  -- Commented until Haskoin adds support for it.
-    Regtest
+    RegTest
   deriving stock (Eq, Show, Generic)
   deriving (FromJSON, ToJSON) via CustomJSON '[ConstructorTagModifier '[LowerFirst]] NetworkId
 
 networkFromId :: NetworkId -> Network
 networkFromId Mainnet = btc
 networkFromId Testnet3 = btcTest
-networkFromId Regtest = btcRegTest
+networkFromId RegTest = btcRegTest

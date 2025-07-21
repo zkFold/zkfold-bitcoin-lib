@@ -42,6 +42,7 @@ library
     ZkFold.Bitcoin.Provider.Node.Exception
     ZkFold.Bitcoin.Provider.Node.Request
     ZkFold.Bitcoin.Provider.Node.Response
+    ZkFold.Bitcoin.Test.Constants
     ZkFold.Bitcoin.Types
     ZkFold.Bitcoin.Types.Internal.BlockHash
     ZkFold.Bitcoin.Types.Internal.BlockHeader
@@ -78,11 +79,16 @@ library
 test-suite zkfold-bitcoin-lib-test
   import: common
   default-language: GHC2021
-  -- other-modules:
+  other-modules:
+    ZkFold.Bitcoin.Test.RegTest
+
   -- other-extensions:
   type: exitcode-stdio-1.0
   hs-source-dirs: test
   main-is: Main.hs
   build-depends:
     base,
+    haskoin-core,
+    tasty,
+    tasty-hunit,
     zkfold-bitcoin-lib,
