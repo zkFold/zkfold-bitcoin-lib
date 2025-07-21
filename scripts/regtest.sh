@@ -1,5 +1,5 @@
 export datadir=$(mktemp -d "/tmp/bitcoind-regtest-XXXXXX")
-echo "datadir: $datadir"
+echo "Data directory (datadir) for storage of regtest files: $datadir"
 bitcoind -regtest -datadir=$datadir -fallbackfee=0.0001000 -txindex=1 -daemon -rpcuser=user -rpcpassword=password
 
 btc () {
@@ -26,8 +26,11 @@ btc -rpcwallet=testwallet importdescriptors "[{\"desc\": \"$FULL_DESCRIPTOR\", \
 ADDRESS=$(btc -rpcwallet=testwallet getnewaddress "" "bech32")
 echo "Address: $ADDRESS (derived from known extended privkey $PRIVKEY)"
 echo "Funding address"
-btc generatetoaddress 101 "$ADDRESS" > /dev/null
+btc generatetoaddress 1 "$ADDRESS" > /dev/null
 echo "Funded"
+
+echo "Adding dummy blocks by sending funds to a dummy address such that coinbase bitcoin of our test wallet reach maturity"
+btc generatetoaddress 100 "bcrt1qs758ursh4q9z627kt3pp5yysm78ddny6txaqgw" > /dev/null
 
 cleanup() {
     echo "Stopping bitcoind"
@@ -39,6 +42,5 @@ cleanup() {
 
 trap "cleanup; exit 0" INT TERM
 
-echo "Regtest is running. Press Ctrl+C to stop."
+echo "RegTest is running. Press Ctrl+C to stop."
 while true; do sleep 60; done
-# TODO: Better text messages.

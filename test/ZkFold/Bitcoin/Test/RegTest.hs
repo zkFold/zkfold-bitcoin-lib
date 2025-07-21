@@ -18,7 +18,7 @@ regTestTests =
                     { bpcnUsername = "user"
                     , bpcnPassword = "password"
                     , bpcnUrl = "http://localhost:18443"
-                    , bpcnNetworkId = Regtest
+                    , bpcnNetworkId = RegTest
                     }
                 )
         provider <- providerFromConfig providerConfig
