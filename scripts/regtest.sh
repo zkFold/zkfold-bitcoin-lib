@@ -21,7 +21,7 @@ ORIGINAL_DESCRIPTOR="wpkh($PRIVKEY/*)"
 DESCRIPTOR_INFO=$(btc getdescriptorinfo "$ORIGINAL_DESCRIPTOR")
 CHECKSUM=$(echo $DESCRIPTOR_INFO | jq -r '.checksum')
 FULL_DESCRIPTOR="$ORIGINAL_DESCRIPTOR#$CHECKSUM"
-btc -rpcwallet=testwallet importdescriptors "[{\"desc\": \"$FULL_DESCRIPTOR\", \"timestamp\": \"now\", \"active\": true, \"internal\": false, \"range\": [0,999]}]"
+btc -rpcwallet=testwallet importdescriptors "[{\"desc\": \"$FULL_DESCRIPTOR\", \"timestamp\": \"now\", \"active\": true, \"internal\": false, \"range\": [0,0]}]"
 # Address should be bcrt1qcdu42ejr7nyraa93p8x303a0gnvqz8xq9lx639
 ADDRESS=$(btc -rpcwallet=testwallet getnewaddress "" "bech32")
 echo "Address: $ADDRESS (derived from known extended privkey $PRIVKEY)"
