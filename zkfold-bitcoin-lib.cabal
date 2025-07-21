@@ -79,11 +79,15 @@ library
 test-suite zkfold-bitcoin-lib-test
   import: common
   default-language: GHC2021
-  -- other-modules:
+  other-modules:
+    ZkFold.Bitcoin.Test.RegTest
+
   -- other-extensions:
   type: exitcode-stdio-1.0
   hs-source-dirs: test
   main-is: Main.hs
   build-depends:
     base,
+    tasty,
+    tasty-hunit,
     zkfold-bitcoin-lib,

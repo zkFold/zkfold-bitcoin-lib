@@ -1,9 +1,9 @@
 export datadir=$(mktemp -d "/tmp/bitcoind-regtest-XXXXXX")
 echo "datadir: $datadir"
-bitcoind -regtest -datadir=$datadir -fallbackfee=0.0001000 -txindex=1 -daemon
+bitcoind -regtest -datadir=$datadir -fallbackfee=0.0001000 -txindex=1 -daemon -rpcuser=user -rpcpassword=password
 
 btc () {
-    bitcoin-cli -regtest -datadir=$datadir -rpcport=18443 "$@"
+    bitcoin-cli -regtest -datadir=$datadir -rpcport=18443 -rpcuser=user -rpcpassword=password "$@"
 }
 
 while ! btc getblockchaininfo &> /dev/null; do
@@ -41,3 +41,4 @@ trap "cleanup; exit 0" INT TERM
 
 echo "Regtest is running. Press Ctrl+C to stop."
 while true; do sleep 60; done
+# TODO: Better text messages.
