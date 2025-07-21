@@ -29,8 +29,15 @@ echo "Funding address"
 btc generatetoaddress 101 "$ADDRESS" > /dev/null
 echo "Funded"
 
-echo "Stopping bitcoind"
-btc stop
-echo "Stopped bitcoind, removing datadir"
-rm -rf $datadir
-echo "datadir removed"
+cleanup() {
+    echo "Stopping bitcoind"
+    btc stop
+    echo "Stopped bitcoind, removing datadir"
+    rm -rf $datadir
+    echo "datadir removed"
+}
+
+trap "cleanup; exit 0" INT TERM
+
+echo "Regtest is running. Press Ctrl+C to stop."
+while true; do sleep 60; done
