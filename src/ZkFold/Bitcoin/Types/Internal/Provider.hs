@@ -6,6 +6,7 @@ module ZkFold.Bitcoin.Types.Internal.Provider (
 ) where
 
 import Control.Exception (throwIO)
+import Data.Text (Text)
 import Deriving.Aeson
 import Haskoin (Address, Tx, TxHash, addrToText)
 import ZkFold.Bitcoin.Errors (BitcoinQueryMonadException (..))
@@ -63,10 +64,8 @@ providerFromConfig (BPCNode (BitcoinProviderConfigNode{..})) = do
       , bpBlockHeader = nodeBlockHeader env
       , bpBlockHash = nodeBlockHash env
       , bpUtxosAtAddress = \addr -> do
-          let addrText = addrToText (networkFromId bpcnNetworkId) addr
-          case addrText of
-            Nothing -> throwIO $ UnableToSerializeAddress addr bpcnNetworkId
-            Just addrText' -> nodeUtxosAtAddress env addrText'
+          addrText <- resolveAddress addr bpcnNetworkId
+          nodeUtxosAtAddress env addrText
       , bpSubmitTx = nodeSubmitTx env
       , bpNetworkId = bpcnNetworkId
       }
@@ -79,10 +78,14 @@ providerFromConfig (BPCMempoolSpace (BitcoinProviderConfigMempoolSpace{..})) = d
       , bpBlockHeader = mempoolSpaceBlockHeader env
       , bpBlockHash = mempoolSpaceBlockHash env
       , bpUtxosAtAddress = \addr -> do
-          let addrText = addrToText (networkFromId bpcmsNetworkId) addr
-          case addrText of
-            Nothing -> throwIO $ UnableToSerializeAddress addr bpcmsNetworkId
-            Just addrText' -> mempoolSpaceUtxosAtAddress env addrText'
+          addrText <- resolveAddress addr bpcmsNetworkId
+          mempoolSpaceUtxosAtAddress env addrText
       , bpSubmitTx = mempoolSpaceSubmitTx env
       , bpNetworkId = bpcmsNetworkId
       }
+
+resolveAddress :: Address -> NetworkId -> IO Text
+resolveAddress addr nid =
+  case addrToText (networkFromId nid) addr of
+    Nothing -> throwIO $ UnableToSerializeAddress addr nid
+    Just addrText' -> pure addrText'
