@@ -35,12 +35,10 @@ regTestTests =
         network <- runBitcoinQueryMonadIO provider $ networkFromId <$> networkId
         step $ "testWalletUTxOs: " <> show testWalletUTxOs
         withContext $ \ctx -> do
-          let outToSend = btcToSatoshi 10
-              addr2Output = addressToOutput testWalletAddress2
-              txSkel = mustHaveOutput (addr2Output, outToSend)
+          let txSkel = mustHaveOutput (addressToOutput testWalletAddress2, btcToSatoshi 10)
           (tx, selectIns) <- runBitcoinBuilderMonadIO provider [testWalletAddress] testWalletAddress $ buildTx txSkel
           step $ "tx: " <> show tx
-          let signedTx = signTx network ctx tx (selectIns <&> (\selectIn -> SigInput (addressToOutput testWalletAddress) (selectIn & utxoValue) (selectIn & utxoOutpoint) sigHashAll Nothing)) [testWalletXPrvKey.key] & either error id
+          let signedTx = signTx network ctx tx (selectIns <&> (\selectIn -> SigInput (addressToOutput $ utxoAddress selectIn) (selectIn & utxoValue) (selectIn & utxoOutpoint) sigHashAll Nothing)) [testWalletXPrvKey.key] & either error id
           step $ "signedTx: " <> show signedTx
           txid <- runBitcoinQueryMonadIO provider $ submitTx signedTx
           step $ "txid: " <> show txid

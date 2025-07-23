@@ -92,6 +92,7 @@ data BitcoinBuilderIOEnv = BitcoinBuilderIOEnv
   , builderEnvChangeAddress :: Address
   }
 
+-- | This is not simply a wrapper around 'ReaderT BitcoinBuilderIOEnv BitcoinQueryMonadIO' because its type parameter has role set to @nominal@.
 newtype BitcoinBuilderMonadIO a = BitcoinBuilderMonadIO {runBitcoinBuilderMonadIO' :: BitcoinBuilderIOEnv -> BitcoinQueryMonadIO a}
   deriving
     ( Functor
@@ -103,6 +104,12 @@ newtype BitcoinBuilderMonadIO a = BitcoinBuilderMonadIO {runBitcoinBuilderMonadI
     )
     via ReaderT BitcoinBuilderIOEnv BitcoinQueryMonadIO
 
+{- | INTERNAL USAGE ONLY
+
+Do not expose a 'MonadIO' instance for 'BitcoinBuilderMonadIO', as it is not safe to run arbitrary IO actions in the context of a 'BitcoinBuilderMonadIO' action.
+
+Note that constructor of 'BitcoinBuilderMonadIO' is not exported so user cannot construct 'BitcoinBuilderMonadIO' containing arbitrary IO actions.
+-}
 ioToBitcoinBuilderMonadIO :: IO a -> BitcoinBuilderMonadIO a
 ioToBitcoinBuilderMonadIO = BitcoinBuilderMonadIO . const . ioToBitcoinQueryMonadIO
 
