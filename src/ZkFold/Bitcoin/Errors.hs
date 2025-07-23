@@ -10,6 +10,14 @@ import ZkFold.Bitcoin.Types.Internal.UTxO
 
 data BitcoinMonadException
   = UnableToSerializeAddress Address NetworkId
-  | UnableToChooseCoins [UTxO] Satoshi FeePerByte String
+  | UnableToChooseCoins
+      -- | Available UTxOs.
+      [UTxO]
+      -- | Total required output value.
+      Satoshi
+      -- | Fee rate.
+      Satoshi
+      -- | Error message given by coin selection.
+      String
   deriving stock (Show)
   deriving anyclass (Exception)
