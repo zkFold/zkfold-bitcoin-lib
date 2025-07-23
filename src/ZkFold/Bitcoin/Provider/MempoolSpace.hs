@@ -10,6 +10,7 @@ module ZkFold.Bitcoin.Provider.MempoolSpace (
   mempoolSpaceBlockHash,
   mempoolSpaceUtxosAtAddress,
   mempoolSpaceSubmitTx,
+  mempoolSpaceRecommendedFeeRate,
 ) where
 
 import Control.Exception (Exception, throwIO)
@@ -24,7 +25,7 @@ import Data.Proxy (Proxy (..))
 import Data.Text (Text)
 import Data.Typeable (typeOf)
 import Deriving.Aeson
-import Haskoin (OutPoint (..), Tx, TxHash)
+import Haskoin (Address, OutPoint (..), Tx, TxHash)
 import Network.HTTP.Media qualified as M
 import Servant.API (
   Accept (..),
@@ -113,8 +114,14 @@ data MempoolSpaceUtxo = MempoolSpaceUtxo
   deriving stock (Show, Generic)
   deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "msu", LowerFirst]] MempoolSpaceUtxo
 
-utxoFromMempoolSpaceUtxo :: MempoolSpaceUtxo -> UTxO
-utxoFromMempoolSpaceUtxo (MempoolSpaceUtxo txid vout value) = UTxO (OutPoint txid vout) value
+utxoFromMempoolSpaceUtxo :: Address -> MempoolSpaceUtxo -> UTxO
+utxoFromMempoolSpaceUtxo addr (MempoolSpaceUtxo txid vout value) = UTxO (OutPoint txid vout) value addr
+
+newtype MempoolSpaceFeeResponse = MempoolSpaceFeeResponse
+  { msfFastestFee :: Satoshi
+  }
+  deriving stock (Show, Generic)
+  deriving (FromJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "msf", LowerFirst]] MempoolSpaceFeeResponse
 
 type MempoolSpaceApi =
   "blocks" :> "tip" :> "height" :> Get '[TextPlain] (PlainTextRead BlockHeight) -- Unfortunately, mempool.space returns a plain text response instead of JSON.
@@ -123,6 +130,7 @@ type MempoolSpaceApi =
     :<|> "block-height" :> Capture "blockHeight" BlockHeight :> Get '[TextPlain] (PlainTextRead BlockHash)
     :<|> "address" :> Capture "address" Text :> "utxo" :> Get '[JSON] [MempoolSpaceUtxo]
     :<|> "tx" :> ReqBody '[PlainText] Tx :> Post '[TextPlain] (PlainTextRead TxHash)
+    :<|> "v1" :> "fees" :> "recommended" :> Get '[JSON] MempoolSpaceFeeResponse
 
 blockCount :: ClientM (PlainTextRead BlockHeight)
 blockTipHash :: ClientM (PlainTextRead BlockHash)
@@ -130,7 +138,8 @@ blockHeader :: BlockHash -> ClientM (PlainTextRead BlockHeader)
 blockHash :: BlockHeight -> ClientM (PlainTextRead BlockHash)
 addressUtxos :: Text -> ClientM [MempoolSpaceUtxo]
 txHash :: Tx -> ClientM (PlainTextRead TxHash)
-blockCount :<|> blockTipHash :<|> blockHeader :<|> blockHash :<|> addressUtxos :<|> txHash = client @MempoolSpaceApi Proxy
+recommendedFeeRate :: ClientM MempoolSpaceFeeResponse
+blockCount :<|> blockTipHash :<|> blockHeader :<|> blockHash :<|> addressUtxos :<|> txHash :<|> recommendedFeeRate = client @MempoolSpaceApi Proxy
 
 mempoolSpaceBlockCount :: MempoolSpaceApiEnv -> IO BlockHeight
 mempoolSpaceBlockCount env =
@@ -148,11 +157,15 @@ mempoolSpaceBlockHash :: MempoolSpaceApiEnv -> BlockHeight -> IO BlockHash
 mempoolSpaceBlockHash env bh =
   handleMempoolSpaceError "mempoolSpaceBlockHash" . fmap unPlainTextRead <=< runMempoolSpaceClient env $ blockHash bh
 
-mempoolSpaceUtxosAtAddress :: MempoolSpaceApiEnv -> Text -> IO [UTxO]
-mempoolSpaceUtxosAtAddress env addr =
-  handleMempoolSpaceError "mempoolSpaceUtxosAtAddress" . fmap (fmap utxoFromMempoolSpaceUtxo) <=< runMempoolSpaceClient env $ addressUtxos addr
+mempoolSpaceUtxosAtAddress :: MempoolSpaceApiEnv -> (Text, Address) -> IO [UTxO]
+mempoolSpaceUtxosAtAddress env (addrText, addr) =
+  handleMempoolSpaceError "mempoolSpaceUtxosAtAddress" . fmap (fmap (utxoFromMempoolSpaceUtxo addr)) <=< runMempoolSpaceClient env $ addressUtxos addrText
 
 -- TODO: Need to test this!
 mempoolSpaceSubmitTx :: MempoolSpaceApiEnv -> Tx -> IO TxHash
 mempoolSpaceSubmitTx env tx =
   handleMempoolSpaceError "mempoolSpaceSubmitTx" . fmap unPlainTextRead <=< runMempoolSpaceClient env $ txHash tx
+
+mempoolSpaceRecommendedFeeRate :: MempoolSpaceApiEnv -> IO Satoshi
+mempoolSpaceRecommendedFeeRate env =
+  handleMempoolSpaceError "mempoolSpaceRecommendedFeeRate" . fmap (\MempoolSpaceFeeResponse{..} -> msfFastestFee) <=< runMempoolSpaceClient env $ recommendedFeeRate

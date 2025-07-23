@@ -51,6 +51,7 @@ library
     ZkFold.Bitcoin.Types.Internal.HexByteString
     ZkFold.Bitcoin.Types.Internal.NetworkId
     ZkFold.Bitcoin.Types.Internal.Provider
+    ZkFold.Bitcoin.Types.Internal.Skeleton
     ZkFold.Bitcoin.Types.Internal.UTxO
 
   -- other-modules:

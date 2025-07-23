@@ -1,14 +1,23 @@
 module ZkFold.Bitcoin.IO (
   BitcoinQueryMonadIO,
   runBitcoinQueryMonadIO,
+  BitcoinBuilderMonadIO,
+  runBitcoinBuilderMonadIO,
 ) where
 
+import Control.Arrow ((>>>))
 import Control.Exception (catch, throwIO)
 import Control.Monad.Error.Class
 import Control.Monad.Reader
+import Data.Function ((&))
+import Data.Functor ((<&>))
+import Data.Monoid (Sum (..))
+import Haskoin (Address, addressToOutput, chooseCoins, withContext)
+import Haskoin qualified
 import ZkFold.Bitcoin.Class
 import ZkFold.Bitcoin.Errors
-import ZkFold.Bitcoin.Types (BitcoinProvider (..))
+import ZkFold.Bitcoin.Types (BitcoinProvider (..), UTxO (..))
+import ZkFold.Bitcoin.Types.Internal.Skeleton
 
 type role BitcoinQueryMonadIO representational
 
@@ -22,7 +31,7 @@ newtype BitcoinQueryMonadIO a = BitcoinQueryMonadIO {runBitcoinQueryMonadIO' :: 
     )
     via ReaderT BitcoinProvider IO
 
-instance MonadError BitcoinQueryMonadException BitcoinQueryMonadIO where
+instance MonadError BitcoinMonadException BitcoinQueryMonadIO where
   throwError = ioToBitcoinQueryMonadIO . throwIO
   catchError action handler = do
     env <- ask
@@ -60,6 +69,10 @@ instance BitcoinQueryMonad BitcoinQueryMonadIO where
     provider <- ask
     ioToBitcoinQueryMonadIO $ pure $ bpNetworkId provider
 
+  recommendedFeeRate = do
+    provider <- ask
+    ioToBitcoinQueryMonadIO $ bpRecommendedFeeRate provider
+
 {- | INTERNAL USAGE ONLY
 
 Do not expose a 'MonadIO' instance for 'BitcoinQueryMonadIO', as it is not safe to run arbitrary IO actions in the context of a 'BitcoinQueryMonadIO' action.
@@ -71,3 +84,61 @@ ioToBitcoinQueryMonadIO = BitcoinQueryMonadIO . const
 
 runBitcoinQueryMonadIO :: BitcoinProvider -> BitcoinQueryMonadIO a -> IO a
 runBitcoinQueryMonadIO = flip runBitcoinQueryMonadIO'
+
+type role BitcoinBuilderMonadIO representational
+
+data BitcoinBuilderIOEnv = BitcoinBuilderIOEnv
+  { builderEnvAddresses :: [Address]
+  , builderEnvChangeAddress :: Address
+  }
+
+-- | This is not simply a wrapper around 'ReaderT BitcoinBuilderIOEnv BitcoinQueryMonadIO' because its type parameter has role set to @nominal@.
+newtype BitcoinBuilderMonadIO a = BitcoinBuilderMonadIO {runBitcoinBuilderMonadIO' :: BitcoinBuilderIOEnv -> BitcoinQueryMonadIO a}
+  deriving
+    ( Functor
+    , Applicative
+    , Monad
+    , MonadReader BitcoinBuilderIOEnv
+    , MonadError BitcoinMonadException
+    , BitcoinQueryMonad
+    )
+    via ReaderT BitcoinBuilderIOEnv BitcoinQueryMonadIO
+
+{- | INTERNAL USAGE ONLY
+
+Do not expose a 'MonadIO' instance for 'BitcoinBuilderMonadIO', as it is not safe to run arbitrary IO actions in the context of a 'BitcoinBuilderMonadIO' action.
+
+Note that constructor of 'BitcoinBuilderMonadIO' is not exported so user cannot construct 'BitcoinBuilderMonadIO' containing arbitrary IO actions.
+-}
+ioToBitcoinBuilderMonadIO :: IO a -> BitcoinBuilderMonadIO a
+ioToBitcoinBuilderMonadIO = BitcoinBuilderMonadIO . const . ioToBitcoinQueryMonadIO
+
+instance BitcoinBuilderMonad BitcoinBuilderMonadIO where
+  buildTx skel = do
+    BitcoinBuilderIOEnv{..} <- ask
+    utxosWithAddr <-
+      mapM
+        ( \addr ->
+            do
+              utxos <- utxosAtAddress addr
+              pure (utxos, addr)
+        )
+        builderEnvAddresses
+    let allUtxos = map fst utxosWithAddr & mconcat
+        totalOutSats = txSkelOuts skel & foldMap (snd >>> Sum) & getSum
+    feeRate <- recommendedFeeRate
+    (selectIns, change) <- case chooseCoins totalOutSats feeRate (length (txSkelOuts skel) + 1) True allUtxos of
+      Left err -> throwError $ UnableToChooseCoins allUtxos totalOutSats feeRate err
+      Right res -> pure res
+    ioToBitcoinBuilderMonadIO $ withContext $ \ctx -> do
+      let tx = Haskoin.buildTx ctx (selectIns <&> utxoOutpoint) (txSkelOuts skel <> [(addressToOutput builderEnvChangeAddress, change)])
+      pure (tx, selectIns)
+
+runBitcoinBuilderMonadIO :: BitcoinProvider -> [Address] -> Address -> BitcoinBuilderMonadIO a -> IO a
+runBitcoinBuilderMonadIO provider addresses changeAddress act =
+  runBitcoinQueryMonadIO
+    provider
+    ( runBitcoinBuilderMonadIO'
+        act
+        (BitcoinBuilderIOEnv{builderEnvAddresses = addresses, builderEnvChangeAddress = changeAddress})
+    )
