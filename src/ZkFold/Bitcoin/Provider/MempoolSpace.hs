@@ -24,7 +24,7 @@ import Data.Proxy (Proxy (..))
 import Data.Text (Text)
 import Data.Typeable (typeOf)
 import Deriving.Aeson
-import Haskoin (OutPoint (..), Tx, TxHash)
+import Haskoin (Address, OutPoint (..), Tx, TxHash)
 import Network.HTTP.Media qualified as M
 import Servant.API (
   Accept (..),
@@ -113,8 +113,8 @@ data MempoolSpaceUtxo = MempoolSpaceUtxo
   deriving stock (Show, Generic)
   deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "msu", LowerFirst]] MempoolSpaceUtxo
 
-utxoFromMempoolSpaceUtxo :: MempoolSpaceUtxo -> UTxO
-utxoFromMempoolSpaceUtxo (MempoolSpaceUtxo txid vout value) = UTxO (OutPoint txid vout) value
+utxoFromMempoolSpaceUtxo :: Address -> MempoolSpaceUtxo -> UTxO
+utxoFromMempoolSpaceUtxo addr (MempoolSpaceUtxo txid vout value) = UTxO (OutPoint txid vout) value addr
 
 type MempoolSpaceApi =
   "blocks" :> "tip" :> "height" :> Get '[TextPlain] (PlainTextRead BlockHeight) -- Unfortunately, mempool.space returns a plain text response instead of JSON.
@@ -148,9 +148,9 @@ mempoolSpaceBlockHash :: MempoolSpaceApiEnv -> BlockHeight -> IO BlockHash
 mempoolSpaceBlockHash env bh =
   handleMempoolSpaceError "mempoolSpaceBlockHash" . fmap unPlainTextRead <=< runMempoolSpaceClient env $ blockHash bh
 
-mempoolSpaceUtxosAtAddress :: MempoolSpaceApiEnv -> Text -> IO [UTxO]
-mempoolSpaceUtxosAtAddress env addr =
-  handleMempoolSpaceError "mempoolSpaceUtxosAtAddress" . fmap (fmap utxoFromMempoolSpaceUtxo) <=< runMempoolSpaceClient env $ addressUtxos addr
+mempoolSpaceUtxosAtAddress :: MempoolSpaceApiEnv -> (Text, Address) -> IO [UTxO]
+mempoolSpaceUtxosAtAddress env (addrText, addr) =
+  handleMempoolSpaceError "mempoolSpaceUtxosAtAddress" . fmap (fmap (utxoFromMempoolSpaceUtxo addr)) <=< runMempoolSpaceClient env $ addressUtxos addrText
 
 -- TODO: Need to test this!
 mempoolSpaceSubmitTx :: MempoolSpaceApiEnv -> Tx -> IO TxHash

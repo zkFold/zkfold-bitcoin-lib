@@ -21,7 +21,7 @@ import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8)
 import Deriving.Aeson
 import GHC.IsList (IsList (..))
-import Haskoin (OutPoint (..), Tx, TxHash)
+import Haskoin (Address, OutPoint (..), Tx, TxHash)
 import Servant.API (
   JSON,
   Post,
@@ -100,8 +100,8 @@ data NodeUtxo = NodeUtxo
   deriving stock (Show, Generic)
   deriving (FromJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "nu", LowerFirst]] NodeUtxo
 
-utxoFromNodeUtxo :: NodeUtxo -> UTxO
-utxoFromNodeUtxo (NodeUtxo txid vout amount) = UTxO (OutPoint txid vout) (btcToSatoshi amount)
+utxoFromNodeUtxo :: Address -> NodeUtxo -> UTxO
+utxoFromNodeUtxo addr (NodeUtxo txid vout amount) = UTxO (OutPoint txid vout) (btcToSatoshi amount) addr
 
 type NodeApi =
   ReqBody '[JSON] (NodeRequest GetBlockCount) :> Post '[JSON] (NodeResponse BlockHeight)
@@ -145,7 +145,7 @@ nodeSubmitTx :: NodeApiEnv -> Tx -> IO TxHash
 nodeSubmitTx env tx =
   handleNodeError "nodeSubmitTx" <=< runNodeClient env $ submitTx (NodeRequest (SubmitTx tx))
 
-nodeUtxosAtAddress :: NodeApiEnv -> Text -> IO [UTxO]
-nodeUtxosAtAddress env addr = do
-  ScanTxOutSetResponse{..} <- handleNodeError "nodeUtxosAtAddress" <=< runNodeClient env $ scanTxOutSet (NodeRequest (ScanTxOutSet addr))
-  pure $ fmap utxoFromNodeUtxo srUnspents
+nodeUtxosAtAddress :: NodeApiEnv -> (Text, Address) -> IO [UTxO]
+nodeUtxosAtAddress env (addrText, addr) = do
+  ScanTxOutSetResponse{..} <- handleNodeError "nodeUtxosAtAddress" <=< runNodeClient env $ scanTxOutSet (NodeRequest (ScanTxOutSet addrText))
+  pure $ fmap (utxoFromNodeUtxo addr) srUnspents

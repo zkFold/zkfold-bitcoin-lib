@@ -65,7 +65,7 @@ providerFromConfig (BPCNode (BitcoinProviderConfigNode{..})) = do
       , bpBlockHash = nodeBlockHash env
       , bpUtxosAtAddress = \addr -> do
           addrText <- resolveAddress addr bpcnNetworkId
-          nodeUtxosAtAddress env addrText
+          nodeUtxosAtAddress env (addrText, addr)
       , bpSubmitTx = nodeSubmitTx env
       , bpNetworkId = bpcnNetworkId
       }
@@ -79,7 +79,7 @@ providerFromConfig (BPCMempoolSpace (BitcoinProviderConfigMempoolSpace{..})) = d
       , bpBlockHash = mempoolSpaceBlockHash env
       , bpUtxosAtAddress = \addr -> do
           addrText <- resolveAddress addr bpcmsNetworkId
-          mempoolSpaceUtxosAtAddress env addrText
+          mempoolSpaceUtxosAtAddress env (addrText, addr)
       , bpSubmitTx = mempoolSpaceSubmitTx env
       , bpNetworkId = bpcmsNetworkId
       }
