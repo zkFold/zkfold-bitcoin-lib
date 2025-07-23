@@ -140,7 +140,6 @@ nodeBlockHash :: NodeApiEnv -> BlockHeight -> IO BlockHash
 nodeBlockHash env givenHeight =
   handleNodeError "nodeBlockHash" <=< runNodeClient env $ blockHash (NodeRequest (GetBlockHash givenHeight))
 
--- TODO: Need to test this!
 nodeSubmitTx :: NodeApiEnv -> Tx -> IO TxHash
 nodeSubmitTx env tx =
   handleNodeError "nodeSubmitTx" <=< runNodeClient env $ submitTx (NodeRequest (SubmitTx tx))
