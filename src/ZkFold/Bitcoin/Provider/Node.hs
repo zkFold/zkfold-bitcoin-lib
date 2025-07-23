@@ -41,7 +41,7 @@ import ZkFold.Bitcoin.Provider.Node.Response (NodeResponse (..))
 import ZkFold.Bitcoin.Types.Internal.BlockHash (BlockHash)
 import ZkFold.Bitcoin.Types.Internal.BlockHeader (BlockHeader)
 import ZkFold.Bitcoin.Types.Internal.BlockHeight (BlockHeight)
-import ZkFold.Bitcoin.Types.Internal.Common (LowerFirst, OutputIx, Satoshi)
+import ZkFold.Bitcoin.Types.Internal.Common (Bitcoin, LowerFirst, OutputIx, btcToSatoshi)
 import ZkFold.Bitcoin.Types.Internal.UTxO
 
 data GetBlockCount = GetBlockCount
@@ -95,13 +95,13 @@ newtype ScanTxOutSetResponse = ScanTxOutSetResponse
 data NodeUtxo = NodeUtxo
   { nuTxid :: TxHash
   , nuVout :: OutputIx
-  , nuAmount :: Satoshi
+  , nuAmount :: Bitcoin
   }
   deriving stock (Show, Generic)
   deriving (FromJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "nu", LowerFirst]] NodeUtxo
 
 utxoFromNodeUtxo :: NodeUtxo -> UTxO
-utxoFromNodeUtxo (NodeUtxo txid vout amount) = UTxO (OutPoint txid vout) amount
+utxoFromNodeUtxo (NodeUtxo txid vout amount) = UTxO (OutPoint txid vout) (btcToSatoshi amount)
 
 type NodeApi =
   ReqBody '[JSON] (NodeRequest GetBlockCount) :> Post '[JSON] (NodeResponse BlockHeight)

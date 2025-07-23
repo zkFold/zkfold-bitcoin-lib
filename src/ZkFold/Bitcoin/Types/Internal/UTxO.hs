@@ -2,11 +2,14 @@ module ZkFold.Bitcoin.Types.Internal.UTxO (
   UTxO (..),
 ) where
 
-import Data.Word (Word64)
-import Haskoin (OutPoint)
+import Haskoin (Coin (..), OutPoint)
+import ZkFold.Bitcoin.Types.Internal.Common (Satoshi)
 
 data UTxO = UTxO
   { utxoOutpoint :: OutPoint
-  , utxoValue :: Word64
+  , utxoValue :: Satoshi
   }
   deriving stock (Show)
+
+instance Coin UTxO where
+  coinValue = utxoValue
