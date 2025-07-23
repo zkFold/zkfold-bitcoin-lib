@@ -69,6 +69,10 @@ instance BitcoinQueryMonad BitcoinQueryMonadIO where
     provider <- ask
     ioToBitcoinQueryMonadIO $ pure $ bpNetworkId provider
 
+  recommendedFeeRate = do
+    provider <- ask
+    ioToBitcoinQueryMonadIO $ bpRecommendedFeeRate provider
+
 {- | INTERNAL USAGE ONLY
 
 Do not expose a 'MonadIO' instance for 'BitcoinQueryMonadIO', as it is not safe to run arbitrary IO actions in the context of a 'BitcoinQueryMonadIO' action.
@@ -115,10 +119,9 @@ instance BitcoinBuilderMonad BitcoinBuilderMonadIO where
         builderEnvAddresses
     let allUtxos = map fst utxosWithAddr & mconcat
         totalOutSats = txSkelOuts skel & foldMap (snd >>> Sum) & getSum
-        -- TODO: Fetch it from network.
-        feePerByte = 1
-    (selectIns, change) <- case chooseCoins totalOutSats feePerByte (length (txSkelOuts skel) + 1) True allUtxos of
-      Left err -> throwError $ UnableToChooseCoins allUtxos totalOutSats feePerByte err
+    feeRate <- recommendedFeeRate
+    (selectIns, change) <- case chooseCoins totalOutSats feeRate (length (txSkelOuts skel) + 1) True allUtxos of
+      Left err -> throwError $ UnableToChooseCoins allUtxos totalOutSats feeRate err
       Right res -> pure res
     ioToBitcoinBuilderMonadIO $ withContext $ \ctx -> do
       let tx = Haskoin.buildTx ctx (selectIns <&> utxoOutpoint) (txSkelOuts skel <> [(addressToOutput builderEnvChangeAddress, change)])
