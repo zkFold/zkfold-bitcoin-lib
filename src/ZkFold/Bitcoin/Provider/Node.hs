@@ -5,6 +5,7 @@ module ZkFold.Bitcoin.Provider.Node (
   nodeBlockHash,
   nodeSubmitTx,
   nodeUtxosAtAddress,
+  nodeRecommendedFeeRate,
   module ZkFold.Bitcoin.Provider.Node.ApiEnv,
   NodeProviderException (..),
 ) where
@@ -21,6 +22,7 @@ import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8)
 import Deriving.Aeson
 import GHC.IsList (IsList (..))
+import GHC.Natural (Natural)
 import Haskoin (Address, OutPoint (..), Tx, TxHash)
 import Servant.API (
   JSON,
@@ -41,7 +43,7 @@ import ZkFold.Bitcoin.Provider.Node.Response (NodeResponse (..))
 import ZkFold.Bitcoin.Types.Internal.BlockHash (BlockHash)
 import ZkFold.Bitcoin.Types.Internal.BlockHeader (BlockHeader)
 import ZkFold.Bitcoin.Types.Internal.BlockHeight (BlockHeight)
-import ZkFold.Bitcoin.Types.Internal.Common (Bitcoin, LowerFirst, OutputIx, btcToSatoshi)
+import ZkFold.Bitcoin.Types.Internal.Common (Bitcoin, LowerFirst, OutputIx, Satoshi, btcToSatoshi)
 import ZkFold.Bitcoin.Types.Internal.UTxO
 
 data GetBlockCount = GetBlockCount
@@ -103,6 +105,18 @@ data NodeUtxo = NodeUtxo
 utxoFromNodeUtxo :: Address -> NodeUtxo -> UTxO
 utxoFromNodeUtxo addr (NodeUtxo txid vout amount) = UTxO (OutPoint txid vout) (btcToSatoshi amount) addr
 
+newtype EstimateSmartFee = EstimateSmartFee Natural
+
+instance ToJSONRPC EstimateSmartFee where
+  toMethod = const "estimatesmartfee"
+  toParams (EstimateSmartFee blocks) = Just (Aeson.Array $ fromList [toJSON blocks])
+
+newtype EstimateSmartFeeResponse = EstimateSmartFeeResponse
+  { esfrFeerate :: Maybe Bitcoin
+  }
+  deriving stock (Show, Generic)
+  deriving (FromJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "esfr", LowerFirst]] EstimateSmartFeeResponse
+
 type NodeApi =
   ReqBody '[JSON] (NodeRequest GetBlockCount) :> Post '[JSON] (NodeResponse BlockHeight)
     :<|> ReqBody '[JSON] (NodeRequest GetBestBlockHash) :> Post '[JSON] (NodeResponse BlockHash)
@@ -110,6 +124,7 @@ type NodeApi =
     :<|> ReqBody '[JSON] (NodeRequest GetBlockHash) :> Post '[JSON] (NodeResponse BlockHash)
     :<|> ReqBody '[JSON] (NodeRequest SubmitTx) :> Post '[JSON] (NodeResponse TxHash)
     :<|> ReqBody '[JSON] (NodeRequest ScanTxOutSet) :> Post '[JSON] (NodeResponse ScanTxOutSetResponse)
+    :<|> ReqBody '[JSON] (NodeRequest EstimateSmartFee) :> Post '[JSON] (NodeResponse EstimateSmartFeeResponse)
 
 blockCount :: NodeRequest GetBlockCount -> ClientM (NodeResponse BlockHeight)
 bestBlockHash :: NodeRequest GetBestBlockHash -> ClientM (NodeResponse BlockHash)
@@ -117,12 +132,14 @@ blockHeader :: NodeRequest GetBlockHeader -> ClientM (NodeResponse BlockHeader)
 blockHash :: NodeRequest GetBlockHash -> ClientM (NodeResponse BlockHash)
 submitTx :: NodeRequest SubmitTx -> ClientM (NodeResponse TxHash)
 scanTxOutSet :: NodeRequest ScanTxOutSet -> ClientM (NodeResponse ScanTxOutSetResponse)
+estimateSmartFee :: NodeRequest EstimateSmartFee -> ClientM (NodeResponse EstimateSmartFeeResponse)
 blockCount
   :<|> bestBlockHash
   :<|> blockHeader
   :<|> blockHash
   :<|> submitTx
-  :<|> scanTxOutSet = client @NodeApi Proxy
+  :<|> scanTxOutSet
+  :<|> estimateSmartFee = client @NodeApi Proxy
 
 nodeBlockCount :: NodeApiEnv -> IO BlockHeight
 nodeBlockCount env =
@@ -148,3 +165,8 @@ nodeUtxosAtAddress :: NodeApiEnv -> (Text, Address) -> IO [UTxO]
 nodeUtxosAtAddress env (addrText, addr) = do
   ScanTxOutSetResponse{..} <- handleNodeError "nodeUtxosAtAddress" <=< runNodeClient env $ scanTxOutSet (NodeRequest (ScanTxOutSet addrText))
   pure $ fmap (utxoFromNodeUtxo addr) srUnspents
+
+nodeRecommendedFeeRate :: NodeApiEnv -> IO Satoshi
+nodeRecommendedFeeRate env = do
+  EstimateSmartFeeResponse{..} <- handleNodeError "nodeRecommendedFeeRate" <=< runNodeClient env $ estimateSmartFee (NodeRequest (EstimateSmartFee 1))
+  pure $ maybe 1 (\fr -> btcToSatoshi fr `div` 1000) esfrFeerate

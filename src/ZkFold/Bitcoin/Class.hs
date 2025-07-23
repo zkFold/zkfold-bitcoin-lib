@@ -8,10 +8,11 @@ import Control.Monad.Reader (ReaderT, lift)
 import Haskoin (Address, Tx, TxHash)
 import ZkFold.Bitcoin.Errors (BitcoinMonadException)
 import ZkFold.Bitcoin.Types
+import ZkFold.Bitcoin.Types.Internal.Common (Satoshi)
 import ZkFold.Bitcoin.Types.Internal.Skeleton (TxSkeleton)
 
 class (MonadError BitcoinMonadException m) => BitcoinQueryMonad m where
-  {-# MINIMAL blockCount, bestBlockHash, blockHeader, blockHash, utxosAtAddress, submitTx, networkId #-}
+  {-# MINIMAL blockCount, bestBlockHash, blockHeader, blockHash, utxosAtAddress, submitTx, networkId, recommendedFeeRate #-}
 
   -- | Get the height of the most-work fully-validated chain.
   blockCount :: m BlockHeight
@@ -36,6 +37,11 @@ class (MonadError BitcoinMonadException m) => BitcoinQueryMonad m where
   -- | Get the 'NetworkId' of the Bitcoin network.
   networkId :: m NetworkId
 
+  -- TODO: Give more options like number of blocks to confirm in, etc.?
+
+  -- | Get the recommended fee rate in satoshi per virtual byte of the network for the transaction to get quickly confirmed (i.e. in 1 block).
+  recommendedFeeRate :: m Satoshi
+
 instance (BitcoinQueryMonad m) => BitcoinQueryMonad (ReaderT r m) where
   blockCount = lift blockCount
   bestBlockHash = lift bestBlockHash
@@ -44,6 +50,7 @@ instance (BitcoinQueryMonad m) => BitcoinQueryMonad (ReaderT r m) where
   utxosAtAddress = lift . utxosAtAddress
   submitTx = lift . submitTx
   networkId = lift networkId
+  recommendedFeeRate = lift recommendedFeeRate
 
 class (BitcoinQueryMonad m) => BitcoinBuilderMonad m where
   {-# MINIMAL buildTx #-}
