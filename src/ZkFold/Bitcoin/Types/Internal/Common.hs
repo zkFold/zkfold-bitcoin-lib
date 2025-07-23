@@ -5,6 +5,7 @@ module ZkFold.Bitcoin.Types.Internal.Common (
   Bitcoin,
   btcToSatoshi,
   btcFromSatoshi,
+  FeePerByte,
 ) where
 
 import Data.Char (toLower)
@@ -40,3 +41,5 @@ btcToSatoshi (MkFixed x) = fromIntegral x
 
 btcFromSatoshi :: Satoshi -> Bitcoin
 btcFromSatoshi x = MkFixed (fromIntegral x)
+
+type FeePerByte = Satoshi

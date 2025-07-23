@@ -9,7 +9,7 @@ import Control.Exception (throwIO)
 import Data.Text (Text)
 import Deriving.Aeson
 import Haskoin (Address, Tx, TxHash, addrToText)
-import ZkFold.Bitcoin.Errors (BitcoinQueryMonadException (..))
+import ZkFold.Bitcoin.Errors (BitcoinMonadException (..))
 import ZkFold.Bitcoin.Provider.MempoolSpace
 import ZkFold.Bitcoin.Provider.Node
 import ZkFold.Bitcoin.Types.Internal.BlockHash (BlockHash)
