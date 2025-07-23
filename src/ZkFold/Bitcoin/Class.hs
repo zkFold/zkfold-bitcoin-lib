@@ -1,6 +1,7 @@
 module ZkFold.Bitcoin.Class (
   BitcoinQueryMonad (..),
   BitcoinBuilderMonad (..),
+  BitcoinSignerMonad (..),
 ) where
 
 import Control.Monad.Error.Class (MonadError)
@@ -57,3 +58,12 @@ class (BitcoinQueryMonad m) => BitcoinBuilderMonad m where
 
   -- | Build a transaction from a 'TxSkeleton', returning the transaction and the UTxOs that are being spent by this transaction.
   buildTx :: TxSkeleton -> m (Tx, [UTxO])
+
+instance (BitcoinBuilderMonad m) => BitcoinBuilderMonad (ReaderT r m) where
+  buildTx = lift . buildTx
+
+class (BitcoinBuilderMonad m) => BitcoinSignerMonad m where
+  {-# MINIMAL signTx #-}
+
+  -- | Sign a transaction with given UTxOs that are being spent by it.
+  signTx :: (Tx, [UTxO]) -> m Tx

@@ -2,13 +2,11 @@
 
 module ZkFold.Bitcoin.Test.RegTest (regTestTests) where
 
-import Data.Function ((&))
-import Data.Functor ((<&>))
-import Haskoin (SigInput (..), addressToOutput, sigHashAll, signTx, withContext)
+import Haskoin (addressToOutput)
 import Haskoin.Crypto.Keys.Extended qualified as H
 import Test.Tasty
 import Test.Tasty.HUnit (testCaseSteps)
-import ZkFold.Bitcoin.Class (BitcoinBuilderMonad (..), BitcoinQueryMonad (networkId, submitTx, utxosAtAddress))
+import ZkFold.Bitcoin.Class (BitcoinBuilderMonad (..), BitcoinQueryMonad (submitTx, utxosAtAddress), signTx)
 import ZkFold.Bitcoin.IO
 import ZkFold.Bitcoin.Test.Constants (testWalletAddress, testWalletAddress2, testWalletXPrvKey)
 import ZkFold.Bitcoin.Types
@@ -32,14 +30,12 @@ regTestTests =
         provider <- providerFromConfig providerConfig
         testWalletUTxOs <- runBitcoinQueryMonadIO provider $ do
           utxosAtAddress testWalletAddress
-        network <- runBitcoinQueryMonadIO provider $ networkFromId <$> networkId
         step $ "testWalletUTxOs: " <> show testWalletUTxOs
-        withContext $ \ctx -> do
-          let txSkel = mustHaveOutput (addressToOutput testWalletAddress2, btcToSatoshi 10)
-          (tx, selectIns) <- runBitcoinBuilderMonadIO provider [testWalletAddress] testWalletAddress $ buildTx txSkel
-          step $ "tx: " <> show tx
-          let signedTx = signTx network ctx tx (selectIns <&> (\selectIn -> SigInput (addressToOutput $ utxoAddress selectIn) (selectIn & utxoValue) (selectIn & utxoOutpoint) sigHashAll Nothing)) [testWalletXPrvKey.key] & either error id
-          step $ "signedTx: " <> show signedTx
-          txid <- runBitcoinQueryMonadIO provider $ submitTx signedTx
-          step $ "txid: " <> show txid
+        let txSkel = mustHaveOutput (addressToOutput testWalletAddress2, btcToSatoshi 10)
+        (tx, selectIns) <- runBitcoinBuilderMonadIO provider [testWalletAddress] testWalletAddress $ buildTx txSkel
+        step $ "tx: " <> show tx
+        signedTx <- runBitcoinSignerMonadIO provider [testWalletAddress] testWalletAddress [testWalletXPrvKey.key] $ signTx (tx, selectIns)
+        step $ "signedTx: " <> show signedTx
+        txid <- runBitcoinQueryMonadIO provider $ submitTx signedTx
+        step $ "txid: " <> show txid
     ]

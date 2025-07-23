@@ -3,6 +3,8 @@ module ZkFold.Bitcoin.IO (
   runBitcoinQueryMonadIO,
   BitcoinBuilderMonadIO,
   runBitcoinBuilderMonadIO,
+  BitcoinSignerMonadIO,
+  runBitcoinSignerMonadIO,
 ) where
 
 import Control.Arrow ((>>>))
@@ -12,11 +14,11 @@ import Control.Monad.Reader
 import Data.Function ((&))
 import Data.Functor ((<&>))
 import Data.Monoid (Sum (..))
-import Haskoin (Address, addressToOutput, chooseCoins, withContext)
+import Haskoin (Address, SecKey, SigInput (..), addressToOutput, chooseCoins, sigHashAll, withContext)
 import Haskoin qualified
 import ZkFold.Bitcoin.Class
 import ZkFold.Bitcoin.Errors
-import ZkFold.Bitcoin.Types (BitcoinProvider (..), UTxO (..))
+import ZkFold.Bitcoin.Types (BitcoinProvider (..), UTxO (..), networkFromId)
 import ZkFold.Bitcoin.Types.Internal.Skeleton
 
 type role BitcoinQueryMonadIO representational
@@ -92,7 +94,7 @@ data BitcoinBuilderIOEnv = BitcoinBuilderIOEnv
   , builderEnvChangeAddress :: Address
   }
 
--- | This is not simply a wrapper around 'ReaderT BitcoinBuilderIOEnv BitcoinQueryMonadIO' because its type parameter has role set to @nominal@.
+-- This is not simply a wrapper around 'ReaderT BitcoinBuilderIOEnv BitcoinQueryMonadIO' because its type parameter has role set to @nominal@.
 newtype BitcoinBuilderMonadIO a = BitcoinBuilderMonadIO {runBitcoinBuilderMonadIO' :: BitcoinBuilderIOEnv -> BitcoinQueryMonadIO a}
   deriving
     ( Functor
@@ -141,4 +143,53 @@ runBitcoinBuilderMonadIO provider addresses changeAddress act =
     ( runBitcoinBuilderMonadIO'
         act
         (BitcoinBuilderIOEnv{builderEnvAddresses = addresses, builderEnvChangeAddress = changeAddress})
+    )
+
+-- This is not simply a wrapper around 'ReaderT BitcoinSignerIOEnv BitcoinBuilderMonadIO' because its type parameter has role set to @nominal@.
+type role BitcoinSignerMonadIO representational
+
+newtype BitcoinSignerMonadIO a = BitcoinSignerMonadIO {runBitcoinSignerMonadIO' :: BitcoinSignerIOEnv -> BitcoinBuilderMonadIO a}
+  deriving
+    ( Functor
+    , Applicative
+    , Monad
+    , MonadReader BitcoinSignerIOEnv
+    , MonadError BitcoinMonadException
+    , BitcoinQueryMonad
+    , BitcoinBuilderMonad
+    )
+    via ReaderT BitcoinSignerIOEnv BitcoinBuilderMonadIO
+
+newtype BitcoinSignerIOEnv = BitcoinSignerIOEnv
+  { signerEnvKeys :: [SecKey]
+  }
+
+{- | INTERNAL USAGE ONLY
+
+Do not expose a 'MonadIO' instance for 'BitcoinSignerMonadIO', as it is not safe to run arbitrary IO actions in the context of a 'BitcoinSignerMonadIO' action.
+
+Note that constructor of 'BitcoinSignerMonadIO' is not exported so user cannot construct 'BitcoinSignerMonadIO' containing arbitrary IO actions.
+-}
+ioToBitcoinSignerMonadIO :: IO a -> BitcoinSignerMonadIO a
+ioToBitcoinSignerMonadIO = BitcoinSignerMonadIO . const . ioToBitcoinBuilderMonadIO
+
+instance BitcoinSignerMonad BitcoinSignerMonadIO where
+  signTx (tx, selectIns) = do
+    BitcoinSignerIOEnv{..} <- ask
+    nid <- networkId
+    let network = networkFromId nid
+    ioToBitcoinSignerMonadIO $ withContext $ \ctx -> do
+      case Haskoin.signTx network ctx tx (selectIns <&> (\selectIn -> SigInput (addressToOutput $ utxoAddress selectIn) (selectIn & utxoValue) (selectIn & utxoOutpoint) sigHashAll Nothing)) signerEnvKeys of
+        Left err -> throwIO $ UnableToSignTx tx err
+        Right signedTx -> pure signedTx
+
+runBitcoinSignerMonadIO :: BitcoinProvider -> [Address] -> Address -> [SecKey] -> BitcoinSignerMonadIO a -> IO a
+runBitcoinSignerMonadIO provider addresses changeAddress keys act =
+  runBitcoinBuilderMonadIO
+    provider
+    addresses
+    changeAddress
+    ( runBitcoinSignerMonadIO'
+        act
+        (BitcoinSignerIOEnv{signerEnvKeys = keys})
     )

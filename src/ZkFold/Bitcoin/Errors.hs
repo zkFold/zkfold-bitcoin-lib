@@ -3,7 +3,7 @@ module ZkFold.Bitcoin.Errors (
 ) where
 
 import Control.Exception (Exception)
-import Haskoin (Address)
+import Haskoin (Address, Tx)
 import ZkFold.Bitcoin.Types.Internal.Common
 import ZkFold.Bitcoin.Types.Internal.NetworkId (NetworkId)
 import ZkFold.Bitcoin.Types.Internal.UTxO
@@ -18,6 +18,11 @@ data BitcoinMonadException
       -- | Fee rate.
       Satoshi
       -- | Error message given by coin selection.
+      String
+  | UnableToSignTx
+      -- | Transaction.
+      Tx
+      -- | Error message given by Haskoin.
       String
   deriving stock (Show)
   deriving anyclass (Exception)
