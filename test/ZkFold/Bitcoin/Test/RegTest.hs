@@ -10,7 +10,7 @@ import Data.Function ((&))
 import Data.Maybe (fromJust)
 import Data.Text.Encoding (encodeUtf8)
 import Data.Word (Word32)
-import Haskoin (Ctx, Hash256, PublicKey, Script (..), ScriptOp (..), Tx (..), TxIn (..), TxSignature (..), addressToOutput, encodeTxSig, marshal, opPushData, outputAddress, payToScriptAddress, script, sha256, sigHashAll, signHash, toP2SH, txSigHash, updateIndex, withContext, wrapPubKey)
+import Haskoin (Ctx, Hash256, PublicKey, Script (..), ScriptOp (..), Tx (..), TxIn (..), TxSignature (..), WitnessProgram (..), addressToOutput, encodeTxSig, marshal, opPushData, outputAddress, payToScriptAddress, script, sha256, sigHashAll, signHash, toP2SH, toP2WSH, toWitnessStack, txSigHash, txSigHashForkId, updateIndex, withContext, wrapPubKey)
 import Haskoin qualified
 import Haskoin.Crypto.Keys.Extended qualified as H
 import Test.Tasty
@@ -50,7 +50,7 @@ regTestTests =
           let testWallet2PublicKey = testWalletXPubKey2.key & wrapPubKey True
               testWalletPublicKey = testWalletXPubKey.key & wrapPubKey True
               htlcScript = buildHTLCRedeem ctx secretHash testWallet2PublicKey testWalletPublicKey (currentBlockHeight + 4) -- locked till 4 blocks
-              htlcScriptOutput = toP2SH htlcScript
+              htlcScriptOutput = toP2WSH htlcScript -- toP2SH htlcScript
               htlcScriptOutputAddress = outputAddress ctx htlcScriptOutput & fromJust
 
           let txSkel = mustHaveOutput (htlcScriptOutput, btcToSatoshi 10)
@@ -66,31 +66,33 @@ regTestTests =
           let scriptUTxO = head scriptUTxOs
           -- TODO: Appropriate fee estimation.
           let redeemTx = Haskoin.buildTx ctx [scriptUTxO & utxoOutpoint] [(testWalletAddress2 & addressToOutput, btcToSatoshi 10 - 1000)]
-              sigHash = txSigHash network redeemTx htlcScript (utxoValue scriptUTxO) 0 sigHashAll
+              sigHash = txSigHashForkId network redeemTx htlcScript (utxoValue scriptUTxO) 0 sigHashAll -- txSigHash for P2SH.
               sig = signHash ctx (testWalletXPrvKey2.key) sigHash
               txSig = TxSignature sig sigHashAll
               sigBS = encodeTxSig network ctx txSig
               redeemBS = runPutS $ serialize htlcScript
-              inputScript =
-                Script
-                  [ opPushData sigBS
-                  , opPushData secret
-                  , OP_1
-                  , opPushData redeemBS
-                  ]
-              updatedInputs =
-                updateIndex
-                  0
-                  redeemTx.inputs
-                  ( \TxIn{..} ->
-                      TxIn
-                        { outpoint
-                        , sequence
-                        , script = runPutS $ serialize inputScript
-                        }
-                  )
+              witnessStack = [sigBS, secret, "\x01", redeemBS] -- In SegWit (by standardness) and Taproot (by consensus), the arguments to OP_IF and OP_NOTIF must be minimal. See https://bitcoin.stackexchange.com/a/122826 for more details.
+              witnessData = updateIndex 0 (replicate 1 $ toWitnessStack network ctx EmptyWitnessProgram) (const witnessStack)
+              -- inputScript =
+              --   Script
+              --     [ opPushData sigBS
+              --     , opPushData secret
+              --     , OP_1
+              --     , opPushData redeemBS
+              --     ]
+              -- updatedInputs =
+              --   updateIndex
+              --     0
+              --     redeemTx.inputs
+              --     ( \TxIn{..} ->
+              --         TxIn
+              --           { outpoint
+              --           , sequence
+              --           , script = runPutS $ serialize inputScript
+              --           }
+              --     )
               finalTx = case redeemTx of
-                Tx{..} -> Tx{version, outputs, witness, locktime, inputs = updatedInputs}
+                Tx{..} -> Tx{version, outputs, witness = witnessData, locktime, inputs} -- inputs = updatedInputs for P2SH
           step $ "finalTx: " <> show finalTx
           txIdRedeem <- runBitcoinQueryMonadIO provider $ submitTx finalTx
           step $ "txIdRedeem: " <> show txIdRedeem
