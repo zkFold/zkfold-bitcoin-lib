@@ -14,9 +14,10 @@ import Control.Monad.Reader
 import Data.Function ((&))
 import Data.Functor ((<&>))
 import Data.Monoid (Sum (..))
-import Haskoin (Address, SecKey, SigInput (..), addressToOutput, chooseCoins, sigHashAll, withContext)
+import Haskoin (Address, SecKey, SigInput (..), addressToOutput, sigHashAll, withContext)
 import Haskoin qualified
 import ZkFold.Bitcoin.Class
+import ZkFold.Bitcoin.CoinSelection (chooseCoinsMandatory)
 import ZkFold.Bitcoin.Errors
 import ZkFold.Bitcoin.Types (BitcoinProvider (..), UTxO (..), networkFromId)
 import ZkFold.Bitcoin.Types.Internal.Skeleton
@@ -118,27 +119,23 @@ ioToBitcoinBuilderMonadIO = BitcoinBuilderMonadIO . const . ioToBitcoinQueryMona
 instance BitcoinBuilderMonad BitcoinBuilderMonadIO where
   buildTx skel = do
     BitcoinBuilderIOEnv{..} <- ask
-    utxosWithAddr <-
+    utxos <-
       mapM
-        ( \addr ->
-            do
-              utxos <- utxosAtAddress addr
-              pure (utxos, addr)
-        )
+        utxosAtAddress
         builderEnvAddresses
-    let allUtxos = map fst utxosWithAddr & mconcat
+    let additionalUtxos = mconcat utxos & filter (\utxo -> utxo `notElem` txSkelIns skel)
         totalOutSats = txSkelOuts skel & foldMap (snd >>> Sum) & getSum
     feeRate <- recommendedFeeRate
-    (selectIns, change) <- case chooseCoins totalOutSats feeRate (length (txSkelOuts skel) + 1) True allUtxos of
-      Left err -> throwError $ UnableToChooseCoins allUtxos totalOutSats feeRate err
+    (selectIns, change) <- case chooseCoinsMandatory (txSkelIns skel) totalOutSats feeRate (length (txSkelOuts skel) + 1) True additionalUtxos of
+      Left err -> throwError $ UnableToChooseCoins skel additionalUtxos totalOutSats feeRate err
       Right res -> pure res
     ioToBitcoinBuilderMonadIO $ withContext $ \ctx -> do
       let tx =
             buildTxFromSkeleton
               ctx
-              (selectIns <&> utxoOutpoint)
               ( TxSkeleton
-                  { txSkelOuts = txSkelOuts skel <> [(addressToOutput builderEnvChangeAddress, change)]
+                  { txSkelIns = selectIns
+                  , txSkelOuts = txSkelOuts skel <> [(addressToOutput builderEnvChangeAddress, change)]
                   , txSkelLocktime = txSkelLocktime skel
                   }
               )

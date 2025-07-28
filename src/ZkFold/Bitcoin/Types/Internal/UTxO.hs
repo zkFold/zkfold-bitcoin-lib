@@ -10,7 +10,7 @@ data UTxO = UTxO
   , utxoValue :: Satoshi
   , utxoAddress :: Address
   }
-  deriving stock (Show)
+  deriving stock (Show, Eq)
 
 instance Coin UTxO where
   coinValue = utxoValue
