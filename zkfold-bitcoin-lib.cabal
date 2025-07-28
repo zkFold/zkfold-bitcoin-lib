@@ -32,6 +32,7 @@ library
   import: common
   exposed-modules:
     ZkFold.Bitcoin.Class
+    ZkFold.Bitcoin.CoinSelection
     ZkFold.Bitcoin.Errors
     ZkFold.Bitcoin.IO
     ZkFold.Bitcoin.Provider.Common
@@ -53,6 +54,7 @@ library
     ZkFold.Bitcoin.Types.Internal.Provider
     ZkFold.Bitcoin.Types.Internal.Skeleton
     ZkFold.Bitcoin.Types.Internal.UTxO
+    ZkFold.Bitcoin.Utils
 
   -- other-modules:
   -- other-extensions:
@@ -62,6 +64,7 @@ library
     base16-bytestring,
     bytes,
     bytestring,
+    conduit,
     cryptohash-sha256,
     deriving-aeson,
     haskoin-core,
@@ -89,7 +92,11 @@ test-suite zkfold-bitcoin-lib-test
   main-is: Main.hs
   build-depends:
     base,
+    base16-bytestring,
+    bytes,
+    bytestring,
     haskoin-core,
     tasty,
     tasty-hunit,
+    text,
     zkfold-bitcoin-lib,

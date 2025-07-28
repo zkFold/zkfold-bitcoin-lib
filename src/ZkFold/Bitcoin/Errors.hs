@@ -6,11 +6,14 @@ import Control.Exception (Exception)
 import Haskoin (Address, Tx)
 import ZkFold.Bitcoin.Types.Internal.Common
 import ZkFold.Bitcoin.Types.Internal.NetworkId (NetworkId)
+import ZkFold.Bitcoin.Types.Internal.Skeleton (TxSkeleton)
 import ZkFold.Bitcoin.Types.Internal.UTxO
 
 data BitcoinMonadException
   = UnableToSerializeAddress Address NetworkId
   | UnableToChooseCoins
+      -- | Transaction skeleton.
+      TxSkeleton
       -- | Available UTxOs.
       [UTxO]
       -- | Total required output value.
