@@ -66,4 +66,6 @@ class (BitcoinBuilderMonad m) => BitcoinSignerMonad m where
   {-# MINIMAL signTx #-}
 
   -- | Sign a transaction with given UTxOs that are being spent by it.
+  --
+  -- __NOTE__: This function is supposed to sign for inputs locked by a public key such as P2PKH, P2WPKH or for inputs guarded by a multi-sig (@PayMulSig@ in Haskoin). For complex scripts, see @ZkFold.Bitcoin.Test.RegTest@ module.
   signTx :: (Tx, [UTxO]) -> m Tx
