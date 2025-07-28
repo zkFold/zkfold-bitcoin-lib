@@ -133,7 +133,15 @@ instance BitcoinBuilderMonad BitcoinBuilderMonadIO where
       Left err -> throwError $ UnableToChooseCoins allUtxos totalOutSats feeRate err
       Right res -> pure res
     ioToBitcoinBuilderMonadIO $ withContext $ \ctx -> do
-      let tx = Haskoin.buildTx ctx (selectIns <&> utxoOutpoint) (txSkelOuts skel <> [(addressToOutput builderEnvChangeAddress, change)])
+      let tx =
+            buildTxFromSkeleton
+              ctx
+              (selectIns <&> utxoOutpoint)
+              ( TxSkeleton
+                  { txSkelOuts = txSkelOuts skel <> [(addressToOutput builderEnvChangeAddress, change)]
+                  , txSkelLocktime = txSkelLocktime skel
+                  }
+              )
       pure (tx, selectIns)
 
 runBitcoinBuilderMonadIO :: BitcoinProvider -> [Address] -> Address -> BitcoinBuilderMonadIO a -> IO a

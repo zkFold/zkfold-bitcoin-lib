@@ -3,16 +3,18 @@
 module ZkFold.Bitcoin.Test.RegTest (regTestTests) where
 
 import Control.Concurrent (threadDelay)
-import Data.ByteString (ByteString)
-import Data.Bytes.Put (runPutS)
+import Data.ByteString qualified as BS
+import Data.ByteString.Base16 qualified as BS16
+import Data.Bytes.Put (MonadPut (..), runPutS)
 import Data.Bytes.Serial (Serial (..))
 import Data.Function ((&))
 import Data.Maybe (fromJust)
+import Data.Semigroup (stimesMonoid)
 import Data.Text.Encoding (encodeUtf8)
-import Data.Word (Word32)
-import Haskoin (Ctx, Hash256, PublicKey, Script (..), ScriptOp (..), Tx (..), TxIn (..), TxSignature (..), WitnessProgram (..), addressToOutput, encodeTxSig, marshal, opPushData, outputAddress, payToScriptAddress, script, sha256, sigHashAll, signHash, toP2SH, toP2WSH, toWitnessStack, txSigHash, txSigHashForkId, updateIndex, withContext, wrapPubKey)
+import Data.Word (Word32, Word8)
+import GHC.Natural (Natural)
+import Haskoin (Ctx, Hash256, PublicKey, Script (..), ScriptOp (..), Tx (..), TxSignature (..), WitnessProgram (..), addressToOutput, encodeTxSig, marshal, opPushData, outputAddress, sha256, sigHashAll, signHash, toP2WSH, toWitnessStack, txSigHashForkId, updateIndex, withContext, wrapPubKey)
 import Haskoin qualified
-import Haskoin.Crypto.Keys.Extended qualified as H
 import Test.Tasty
 import Test.Tasty.HUnit (testCaseSteps)
 import ZkFold.Bitcoin.Class (BitcoinBuilderMonad (..), BitcoinQueryMonad (..), signTx)
@@ -42,40 +44,43 @@ regTestTests =
         step $ "testWalletUTxOs: " <> show testWalletUTxOs
         let secret = encodeUtf8 "mysecret"
             secretHash = sha256 secret
-        currentBlockHeight <- runBitcoinQueryMonadIO provider $ blockCount
+        currentBlockHeight <- runBitcoinQueryMonadIO provider blockCount
+        let lockedUntil = currentBlockHeight + 1
         step $ "currentBlockHeight: " <> show currentBlockHeight
-        nid <- runBitcoinQueryMonadIO provider $ networkId
+        nid <- runBitcoinQueryMonadIO provider networkId
         let network = networkFromId nid
         withContext $ \ctx -> do
           let testWallet2PublicKey = testWalletXPubKey2.key & wrapPubKey True
               testWalletPublicKey = testWalletXPubKey.key & wrapPubKey True
-              htlcScript = buildHTLCRedeem ctx secretHash testWallet2PublicKey testWalletPublicKey (currentBlockHeight + 4) -- locked till 4 blocks
+              htlcScript = buildHTLCRedeem ctx secretHash testWallet2PublicKey testWalletPublicKey lockedUntil
               htlcScriptOutput = toP2WSH htlcScript -- toP2SH htlcScript
               htlcScriptOutputAddress = outputAddress ctx htlcScriptOutput & fromJust
-
-          let txSkel = mustHaveOutput (htlcScriptOutput, btcToSatoshi 10)
+              -- Create two outputs, one for testing redeem and other for the refund.
+              txSkel = stimesMonoid (2 :: Natural) $ mustHaveOutput (htlcScriptOutput, btcToSatoshi 10)
           (tx, selectIns) <- runBitcoinBuilderMonadIO provider [testWalletAddress] testWalletAddress $ buildTx txSkel
           step $ "tx: " <> show tx
           signedTx <- runBitcoinSignerMonadIO provider [testWalletAddress] testWalletAddress [testWalletXPrvKey.key] $ signTx (tx, selectIns)
           step $ "signedTx: " <> show signedTx
           txid <- runBitcoinQueryMonadIO provider $ submitTx signedTx
           step $ "txid: " <> show txid
-          threadDelay 20000000 -- wait for 20 seconds
+          threadDelay 20_000_000 -- wait for 20 seconds so that this transaction is mined.
           scriptUTxOs <- runBitcoinQueryMonadIO provider $ utxosAtAddress htlcScriptOutputAddress
           step $ "scriptUTxOs: " <> show scriptUTxOs
-          let scriptUTxO = head scriptUTxOs
+          let scriptUTxORedeem = head scriptUTxOs
+              scriptUTxORefund = scriptUTxOs !! 1
           -- TODO: Appropriate fee estimation.
-          let redeemTx = Haskoin.buildTx ctx [scriptUTxO & utxoOutpoint] [(testWalletAddress2 & addressToOutput, btcToSatoshi 10 - 1000)]
-              sigHash = txSigHashForkId network redeemTx htlcScript (utxoValue scriptUTxO) 0 sigHashAll -- txSigHash for P2SH.
-              sig = signHash ctx (testWalletXPrvKey2.key) sigHash
-              txSig = TxSignature sig sigHashAll
-              sigBS = encodeTxSig network ctx txSig
+          let redeemTx = Haskoin.buildTx ctx [scriptUTxORedeem & utxoOutpoint] [(testWalletAddress2 & addressToOutput, btcToSatoshi 10 - 1000)]
+              sigHashRedeem = txSigHashForkId network redeemTx htlcScript (utxoValue scriptUTxORedeem) 0 sigHashAll -- txSigHash for P2SH.
+              sigRedeem = signHash ctx testWalletXPrvKey2.key sigHashRedeem
+              txSigRedeem = TxSignature sigRedeem sigHashAll
+              sigBSRedeem = encodeTxSig network ctx txSigRedeem
               redeemBS = runPutS $ serialize htlcScript
-              witnessStack = [sigBS, secret, "\x01", redeemBS] -- In SegWit (by standardness) and Taproot (by consensus), the arguments to OP_IF and OP_NOTIF must be minimal. See https://bitcoin.stackexchange.com/a/122826 for more details.
+              redeemBSHex = BS16.encode redeemBS
+              witnessStack = [sigBSRedeem, secret, "\x01", redeemBS] -- In SegWit (by standardness) and Taproot (by consensus), the arguments to OP_IF and OP_NOTIF must be minimal. See https://bitcoin.stackexchange.com/a/122826 for more details.
               witnessData = updateIndex 0 (replicate 1 $ toWitnessStack network ctx EmptyWitnessProgram) (const witnessStack)
               -- inputScript =
               --   Script
-              --     [ opPushData sigBS
+              --     [ opPushData sigBSRedeem
               --     , opPushData secret
               --     , OP_1
               --     , opPushData redeemBS
@@ -92,10 +97,27 @@ regTestTests =
               --           }
               --     )
               finalTx = case redeemTx of
-                Tx{..} -> Tx{version, outputs, witness = witnessData, locktime, inputs} -- inputs = updatedInputs for P2SH
+                Tx{..} -> Tx{witness = witnessData, ..}
+          -- inputs = updatedInputs for P2SH
+          step $ "redeemBSHex: " <> show redeemBSHex
           step $ "finalTx: " <> show finalTx
           txIdRedeem <- runBitcoinQueryMonadIO provider $ submitTx finalTx
           step $ "txIdRedeem: " <> show txIdRedeem
+          let refundTx = buildTxFromSkeleton ctx [scriptUTxORefund & utxoOutpoint] (TxSkeleton{txSkelLocktime = Just lockedUntil, txSkelOuts = [(testWalletAddress2 & addressToOutput, btcToSatoshi 10 - 1000)]})
+              sigHashRefund = txSigHashForkId network refundTx htlcScript (utxoValue scriptUTxORefund) 0 sigHashAll -- txSigHash for P2SH.
+              sigRefund = signHash ctx testWalletXPrvKey.key sigHashRefund
+              txSigRefund = TxSignature sigRefund sigHashAll
+              sigBSRefund = encodeTxSig network ctx txSigRefund
+              witnessStackRefund = [sigBSRefund, "", redeemBS]
+              witnessDataRefund = updateIndex 0 (replicate 1 $ toWitnessStack network ctx EmptyWitnessProgram) (const witnessStackRefund)
+              finalTxRefund = case refundTx of
+                Tx{..} -> Tx{witness = witnessDataRefund, ..}
+          step $ "finalTxRefund: " <> show finalTxRefund
+          step $ "finalTxRefundHex: " <> show (BS16.encode $ runPutS $ serialize finalTxRefund)
+          latestBlockHeight <- runBitcoinQueryMonadIO provider blockCount
+          step $ "latestBlockHeight: " <> show latestBlockHeight
+          txIdRefund <- runBitcoinQueryMonadIO provider $ submitTx finalTxRefund
+          step $ "txIdRefund: " <> show txIdRefund
     ]
 
 buildHTLCRedeem :: Ctx -> Hash256 -> PublicKey -> PublicKey -> Word32 -> Script
@@ -108,10 +130,44 @@ buildHTLCRedeem ctx secretHash recipientPub refundPub timelock =
     , opPushData (marshal ctx recipientPub) -- Push recipient pubkey (33 bytes compressed)
     , OP_CHECKSIG
     , OP_ELSE
-    , opPushData (runPutS $ serialize timelock) -- Push timelock as int (typically 4-5 bytes)
+    , numberToScriptOp timelock -- opPushData (runPutS $ serialize timelock) -- Push timelock as int (typically 4-5 bytes)
     , OP_CHECKLOCKTIMEVERIFY
     , OP_DROP
     , opPushData (marshal ctx refundPub) -- Push refund pubkey (33 bytes compressed)
     , OP_CHECKSIG
     , OP_ENDIF
     ]
+
+{- | Convert a number to the appropriate ScriptOp
+For numbers 0-16, use the built-in opcodes
+For larger numbers, use OP_PUSHDATA with the encoded bytes
+-}
+numberToScriptOp :: Word32 -> ScriptOp
+numberToScriptOp n
+  | n == 0 = OP_0
+  | n <= 16 = Haskoin.intToScriptOp (fromIntegral n)
+  | otherwise = opPushData (encodeNumberBytes n)
+
+encodeNumberBytes :: Word32 -> BS.ByteString
+encodeNumberBytes n = runPutS $ do
+  mapM_ putWord8 (encodeWord32 n)
+
+{- |
+
+1. https://bitcoin.stackexchange.com/a/122944
+2. https://github.com/bitcoinjs/bitcoinjs-lib/blob/248789d25b9833ed286c9ca4b9bfd93f099fd8a3/ts_src/script_number.ts#L71
+-}
+encodeWord32 :: Word32 -> [Word8]
+encodeWord32 n =
+  reverse $
+    if toBytes == mempty
+      then toBytes
+      else
+        if head toBytes >= 0x80
+          then 0x00 : toBytes
+          else toBytes
+ where
+  toBytes = toBytes' n
+  toBytes' :: Word32 -> [Word8]
+  toBytes' 0 = []
+  toBytes' x = fromIntegral (x `mod` 256) : toBytes' (x `div` 256)
