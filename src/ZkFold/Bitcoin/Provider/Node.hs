@@ -161,11 +161,13 @@ nodeSubmitTx :: NodeApiEnv -> Tx -> IO TxHash
 nodeSubmitTx env tx =
   handleNodeError "nodeSubmitTx" <=< runNodeClient env $ submitTx (NodeRequest (SubmitTx tx))
 
+-- TODO: To include for mempool outputs?
 nodeUtxosAtAddress :: NodeApiEnv -> (Text, Address) -> IO [UTxO]
 nodeUtxosAtAddress env (addrText, addr) = do
   ScanTxOutSetResponse{..} <- handleNodeError "nodeUtxosAtAddress" <=< runNodeClient env $ scanTxOutSet (NodeRequest (ScanTxOutSet addrText))
   pure $ fmap (utxoFromNodeUtxo addr) srUnspents
 
+-- TODO: Need to also test this against mainnet.
 nodeRecommendedFeeRate :: NodeApiEnv -> IO Satoshi
 nodeRecommendedFeeRate env = do
   EstimateSmartFeeResponse{..} <- handleNodeError "nodeRecommendedFeeRate" <=< runNodeClient env $ estimateSmartFee (NodeRequest (EstimateSmartFee 1))

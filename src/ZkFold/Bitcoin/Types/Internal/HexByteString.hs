@@ -12,7 +12,7 @@ module ZkFold.Bitcoin.Types.Internal.HexByteString (
 ) where
 
 import Control.Arrow ((>>>))
-import Data.Aeson (ToJSON)
+import Data.Aeson (FromJSON (..), ToJSON, withText)
 import Data.ByteString (ByteString)
 import Data.ByteString.Base16 qualified as BS16
 import Data.Char (isHexDigit)
@@ -47,6 +47,12 @@ isHexByteString t = isHexString t && even (Text.length t)
 mkHexByteString :: Text -> Maybe HexByteString
 mkHexByteString t =
   if isHexByteString t then Just (HexByteString t) else Nothing
+
+instance FromJSON HexByteString where
+  parseJSON = withText "HexByteString" $ \t ->
+    case mkHexByteString t of
+      Just hbs -> pure hbs
+      Nothing -> fail "Invalid hex byte string"
 
 -- | INTERNAL USAGE ONLY. Coerce a `Text` to a `HexByteString`.
 unsafeMkHexByteString :: Text -> HexByteString

@@ -157,6 +157,7 @@ mempoolSpaceBlockHash :: MempoolSpaceApiEnv -> BlockHeight -> IO BlockHash
 mempoolSpaceBlockHash env bh =
   handleMempoolSpaceError "mempoolSpaceBlockHash" . fmap unPlainTextRead <=< runMempoolSpaceClient env $ blockHash bh
 
+-- TODO: Does it return for mempool outputs?
 mempoolSpaceUtxosAtAddress :: MempoolSpaceApiEnv -> (Text, Address) -> IO [UTxO]
 mempoolSpaceUtxosAtAddress env (addrText, addr) =
   handleMempoolSpaceError "mempoolSpaceUtxosAtAddress" . fmap (fmap (utxoFromMempoolSpaceUtxo addr)) <=< runMempoolSpaceClient env $ addressUtxos addrText
