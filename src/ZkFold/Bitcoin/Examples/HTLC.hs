@@ -1,4 +1,6 @@
 module ZkFold.Bitcoin.Examples.HTLC (
+  HTLC (..),
+  mkHTLC,
   fundHTLC,
   signAndSubmitFundHTLC,
   redeemHTLC,
@@ -9,59 +11,73 @@ module ZkFold.Bitcoin.Examples.HTLC (
   signAndSubmitRefundHTLC,
 ) where
 
+import Data.ByteString (ByteString)
 import Data.Bytes.Put (runPutS)
 import Data.Bytes.Serial (Serial (..))
 import Data.Function ((&))
-import Data.Maybe ( fromJust, fromMaybe )
+import Data.Maybe (fromJust, fromMaybe)
 import Data.Semigroup (stimesMonoid)
 import Data.Word (Word32)
+import GHC.Generics (Generic)
 import GHC.Natural (Natural)
-import Haskoin (Ctx, Hash256, PublicKey, Script (..), ScriptOp (..), Tx (..), TxSignature (..), WitnessProgram (..), encodeTxSig, marshal, opPushData, outputAddress, sigHashAll, signHash, toP2WSH, toWitnessStack, txSigHashForkId, updateIndex, Address)
+import Haskoin (Address, Ctx, Hash256, PublicKey, Script (..), ScriptOp (..), ScriptOutput, Tx (..), TxSignature (..), WitnessProgram (..), encodeTxSig, marshal, opPushData, outputAddress, sigHashAll, signHash, toP2WSH, toWitnessStack, txSigHashForkId, updateIndex)
 import Haskoin qualified
-import ZkFold.Bitcoin.Class (BitcoinBuilderMonad (..), BitcoinQueryMonad (..), signTx, BitcoinSignerMonad, network)
+import ZkFold.Bitcoin.Class (BitcoinBuilderMonad (..), BitcoinQueryMonad (..), BitcoinSignerMonad, network, signTx)
 import ZkFold.Bitcoin.Types
 import ZkFold.Bitcoin.Types.Internal.Common (Satoshi)
 import ZkFold.Bitcoin.Types.Internal.Skeleton
 import ZkFold.Bitcoin.Utils (wordToScriptOp)
-import Data.ByteString (ByteString)
 
-fundHTLC :: BitcoinBuilderMonad m => Satoshi -> Ctx -> Hash256 -> PublicKey -> PublicKey -> Word32 -> Maybe Natural -> m (Tx, [UTxO], Script, Address)
-fundHTLC sats ctx secretHash recipientPub refundPub timelock numOuts = do
+data HTLC = HTLC
+  { htlcScript :: Script
+  , htlcScriptOutput :: ScriptOutput
+  , htlcAddress :: Address
+  , htlcSerializedScript :: ByteString
+  }
+  deriving stock (Show, Eq, Generic)
+
+-- TODO: Give FromJSON and ToJSON instances.
+
+mkHTLC :: Ctx -> Hash256 -> PublicKey -> PublicKey -> Word32 -> HTLC
+mkHTLC ctx secretHash recipientPub refundPub timelock =
   let htlcScript = buildHTLC ctx secretHash recipientPub refundPub timelock
       htlcScriptOutput = toP2WSH htlcScript -- toP2SH htlcScript
-      htlcScriptOutputAddress = outputAddress ctx htlcScriptOutput & fromJust
-      txSkel = stimesMonoid (fromMaybe 1 numOuts) $ mustHaveOutput (htlcScriptOutput, sats)
-  (tx, selectIns) <- buildTx txSkel
-  -- TODO: Should also return sigHash for easy signing?
-  pure (tx, selectIns, htlcScript, htlcScriptOutputAddress)
+      htlcAddress = outputAddress ctx htlcScriptOutput & fromJust
+      htlcSerializedScript = runPutS $ serialize htlcScript
+   in HTLC{..}
 
-signAndSubmitFundHTLC :: BitcoinSignerMonad m => (Tx, [UTxO]) -> m (Tx, Haskoin.TxHash)
+fundHTLC :: (BitcoinBuilderMonad m) => HTLC -> Satoshi -> Maybe Natural -> m (Tx, [UTxO])
+fundHTLC HTLC{..} sats numOuts = do
+  (tx, selectIns) <- buildTx $ stimesMonoid (fromMaybe 1 numOuts) $ mustHaveOutput (htlcScriptOutput, sats)
+  -- TODO: Should also return sigHash for easy signing?
+  pure (tx, selectIns)
+
+signAndSubmitFundHTLC :: (BitcoinSignerMonad m) => (Tx, [UTxO]) -> m (Tx, Haskoin.TxHash)
 signAndSubmitFundHTLC (tx, selectIns) = do
   signedTx <- signTx (tx, selectIns)
   tid <- submitTx signedTx
   pure (signedTx, tid)
 
-redeemHTLC :: BitcoinBuilderMonad m => UTxO -> Script -> m (Tx, [UTxO], Hash256)
-redeemHTLC redeemUTxO htlcScript = do
+redeemHTLC :: (BitcoinBuilderMonad m) => UTxO -> HTLC -> m (Tx, [UTxO], Hash256)
+redeemHTLC redeemUTxO HTLC{..} = do
   (unsignedTx, selectIns) <- buildTx (mustHaveInput redeemUTxO)
   net <- network
   let sigHashRedeem = txSigHashForkId net unsignedTx htlcScript (utxoValue redeemUTxO) 0 sigHashAll -- txSigHash for P2SH.
   pure (unsignedTx, selectIns, sigHashRedeem)
 
-addSigAndSubmitRedeemHTLC :: (BitcoinQueryMonad m, Serial p) => Ctx -> Haskoin.Sig -> ByteString -> p -> Tx -> m (Tx, Haskoin.TxHash)
-addSigAndSubmitRedeemHTLC ctx sigRedeem secret htlcScript redeemTx = do
+addSigAndSubmitRedeemHTLC :: (BitcoinQueryMonad m) => Ctx -> Haskoin.Sig -> ByteString -> HTLC -> Tx -> m (Tx, Haskoin.TxHash)
+addSigAndSubmitRedeemHTLC ctx sigRedeem secret HTLC{..} redeemTx = do
   net <- network
   let txSigRedeem = TxSignature sigRedeem sigHashAll
       sigBSRedeem = encodeTxSig net ctx txSigRedeem
-      redeemBS = runPutS $ serialize htlcScript
-      witnessStack = [sigBSRedeem, secret, "\x01", redeemBS] -- In SegWit (by standardness) and Taproot (by consensus), the arguments to OP_IF and OP_NOTIF must be minimal. See https://bitcoin.stackexchange.com/a/122826 for more details.
+      witnessStack = [sigBSRedeem, secret, "\x01", htlcSerializedScript] -- In SegWit (by standardness) and Taproot (by consensus), the arguments to OP_IF and OP_NOTIF must be minimal. See https://bitcoin.stackexchange.com/a/122826 for more details.
       witnessData = updateIndex 0 (replicate 1 $ toWitnessStack net ctx EmptyWitnessProgram) (const witnessStack)
       -- inputScript =
       --   Script
       --     [ opPushData sigBSRedeem
       --     , opPushData secret
       --     , OP_1
-      --     , opPushData redeemBS
+      --     , opPushData htlcSerializedScript
       --     ]
       -- updatedInputs =
       --   updateIndex
@@ -75,41 +91,39 @@ addSigAndSubmitRedeemHTLC ctx sigRedeem secret htlcScript redeemTx = do
       --           }
       --     )
       finalTx = case redeemTx of
-        Tx{..} -> Tx{witness = witnessData, ..} -- inputs = updatedInputs for P2SH
+        Tx{..} -> Tx{witness = witnessData, ..}
+  -- inputs = updatedInputs for P2SH
   txIdRedeem <- submitTx finalTx
   pure (finalTx, txIdRedeem)
 
-
-signAndSubmitRedeemHTLC :: (BitcoinQueryMonad m, Serial p) => Ctx -> Haskoin.SecKey -> Hash256 -> ByteString -> p -> Tx -> m (Tx, Haskoin.TxHash)
-signAndSubmitRedeemHTLC ctx skey sigHashRedeem secret htlcScript redeemTx = do
+signAndSubmitRedeemHTLC :: (BitcoinQueryMonad m) => Ctx -> Haskoin.SecKey -> Hash256 -> ByteString -> HTLC -> Tx -> m (Tx, Haskoin.TxHash)
+signAndSubmitRedeemHTLC ctx skey sigHashRedeem secret htlc redeemTx = do
   let sigRedeem = signHash ctx skey sigHashRedeem
-  addSigAndSubmitRedeemHTLC ctx sigRedeem secret htlcScript redeemTx
+  addSigAndSubmitRedeemHTLC ctx sigRedeem secret htlc redeemTx
 
--- TODO: A type for usual script details that we can pass on instead of passing separately @htlcScript@ or @lockedUntil@ or @redeemBS@.
-refundHTLC :: BitcoinBuilderMonad m => UTxO -> Script -> Word32 -> m (Tx, [UTxO], Hash256)
-refundHTLC refundUTxO htlcScript lockedUntil = do
+refundHTLC :: (BitcoinBuilderMonad m) => UTxO -> HTLC -> Word32 -> m (Tx, [UTxO], Hash256)
+refundHTLC refundUTxO HTLC{..} lockedUntil = do
   net <- network
   (unsignedTx, selectIns) <- buildTx (mustHaveInput refundUTxO <> invalidUntil lockedUntil)
   let sigHashRefund = txSigHashForkId net unsignedTx htlcScript (utxoValue refundUTxO) 0 sigHashAll
   pure (unsignedTx, selectIns, sigHashRefund)
 
-addSigAndSubmitRefundHTLC :: (BitcoinQueryMonad m, Serial p) => Ctx -> Haskoin.Sig -> p -> Tx -> m (Tx, Haskoin.TxHash)
-addSigAndSubmitRefundHTLC ctx sigRefund htlcScript refundTx = do
+addSigAndSubmitRefundHTLC :: (BitcoinQueryMonad m) => Ctx -> Haskoin.Sig -> HTLC -> Tx -> m (Tx, Haskoin.TxHash)
+addSigAndSubmitRefundHTLC ctx sigRefund HTLC{..} refundTx = do
   net <- network
   let txSigRefund = TxSignature sigRefund sigHashAll
       sigBSRefund = encodeTxSig net ctx txSigRefund
-      redeemBS = runPutS $ serialize htlcScript
-      witnessStackRefund = [sigBSRefund, "", redeemBS]
+      witnessStackRefund = [sigBSRefund, "", htlcSerializedScript]
       witnessDataRefund = updateIndex 0 (replicate 1 $ toWitnessStack net ctx EmptyWitnessProgram) (const witnessStackRefund)
       finalTx = case refundTx of
         Tx{..} -> Tx{witness = witnessDataRefund, ..}
   txIdRefund <- submitTx finalTx
   pure (finalTx, txIdRefund)
 
-signAndSubmitRefundHTLC :: (BitcoinQueryMonad m, Serial p) => Ctx -> Haskoin.SecKey -> Hash256 -> p -> Tx -> m (Tx, Haskoin.TxHash)
-signAndSubmitRefundHTLC ctx skey sigHashRefund htlcScript refundTx = do
+signAndSubmitRefundHTLC :: (BitcoinQueryMonad m) => Ctx -> Haskoin.SecKey -> Hash256 -> HTLC -> Tx -> m (Tx, Haskoin.TxHash)
+signAndSubmitRefundHTLC ctx skey sigHashRefund htlc refundTx = do
   let sigRefund = signHash ctx skey sigHashRefund
-  addSigAndSubmitRefundHTLC ctx sigRefund htlcScript refundTx
+  addSigAndSubmitRefundHTLC ctx sigRefund htlc refundTx
 
 buildHTLC :: Ctx -> Hash256 -> PublicKey -> PublicKey -> Word32 -> Script
 buildHTLC ctx secretHash recipientPub refundPub timelock =
