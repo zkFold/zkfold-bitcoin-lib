@@ -2,11 +2,12 @@ module ZkFold.Bitcoin.Class (
   BitcoinQueryMonad (..),
   BitcoinBuilderMonad (..),
   BitcoinSignerMonad (..),
+  network,
 ) where
 
 import Control.Monad.Error.Class (MonadError)
-import Control.Monad.Reader (ReaderT, lift)
-import Haskoin (Address, Tx, TxHash)
+import Control.Monad.Reader (ReaderT (..), lift)
+import Haskoin (Address, Tx, TxHash, Network)
 import ZkFold.Bitcoin.Errors (BitcoinMonadException)
 import ZkFold.Bitcoin.Types
 import ZkFold.Bitcoin.Types.Internal.Common (Satoshi)
@@ -69,3 +70,8 @@ class (BitcoinBuilderMonad m) => BitcoinSignerMonad m where
   --
   -- __NOTE__: This function is supposed to sign for inputs locked by a public key such as P2PKH, P2WPKH or for inputs guarded by a multi-sig (@PayMulSig@ in Haskoin). For complex scripts, see @ZkFold.Bitcoin.Test.RegTest@ module.
   signTx :: (Tx, [UTxO]) -> m Tx
+
+-- | Get the 'Network' of the Bitcoin network.
+network :: BitcoinQueryMonad m => m Network
+network = do
+  networkFromId <$> networkId

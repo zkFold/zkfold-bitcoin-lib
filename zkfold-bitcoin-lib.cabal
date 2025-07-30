@@ -34,6 +34,7 @@ library
     ZkFold.Bitcoin.Class
     ZkFold.Bitcoin.CoinSelection
     ZkFold.Bitcoin.Errors
+    ZkFold.Bitcoin.Examples.HTLC
     ZkFold.Bitcoin.IO
     ZkFold.Bitcoin.Provider.Common
     ZkFold.Bitcoin.Provider.MempoolSpace
