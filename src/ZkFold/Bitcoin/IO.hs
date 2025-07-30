@@ -19,7 +19,7 @@ import Haskoin qualified
 import ZkFold.Bitcoin.Class
 import ZkFold.Bitcoin.CoinSelection (chooseCoinsMandatory)
 import ZkFold.Bitcoin.Errors
-import ZkFold.Bitcoin.Types (BitcoinProvider (..), UTxO (..), networkFromId)
+import ZkFold.Bitcoin.Types (BitcoinProvider (..), UTxO (..))
 import ZkFold.Bitcoin.Types.Internal.Skeleton
 
 type role BitcoinQueryMonadIO representational
@@ -181,10 +181,9 @@ ioToBitcoinSignerMonadIO = BitcoinSignerMonadIO . const . ioToBitcoinBuilderMona
 instance BitcoinSignerMonad BitcoinSignerMonadIO where
   signTx (tx, selectIns) = do
     BitcoinSignerIOEnv{..} <- ask
-    nid <- networkId
-    let network = networkFromId nid
+    net <- network
     ioToBitcoinSignerMonadIO $ withContext $ \ctx -> do
-      case Haskoin.signTx network ctx tx (selectIns <&> (\selectIn -> SigInput (addressToOutput $ utxoAddress selectIn) (selectIn & utxoValue) (selectIn & utxoOutpoint) sigHashAll Nothing)) signerEnvKeys of
+      case Haskoin.signTx net ctx tx (selectIns <&> (\selectIn -> SigInput (addressToOutput $ utxoAddress selectIn) (selectIn & utxoValue) (selectIn & utxoOutpoint) sigHashAll Nothing)) signerEnvKeys of
         Left err -> throwIO $ UnableToSignTx tx err
         Right signedTx -> pure signedTx
 
