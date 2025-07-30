@@ -46,10 +46,10 @@ mkHTLC ctx secretHash recipientPub refundPub timelock =
       htlcSerializedScript = runPutS $ serialize htlcScript
    in HTLC{..}
 
+-- | Fund HTLC contract. Usually, we'll use browser wallet API to send funds to this address instead of this function.
 fundHTLC :: (BitcoinBuilderMonad m) => HTLC -> Satoshi -> Maybe Natural -> m (Tx, [UTxO])
 fundHTLC HTLC{..} sats numOuts = do
   (tx, selectIns) <- buildTx $ stimesMonoid (fromMaybe 1 numOuts) $ mustHaveOutput (htlcScriptOutput, sats)
-  -- TODO: Should also return sigHash for easy signing?
   pure (tx, selectIns)
 
 signAndSubmitFundHTLC :: (BitcoinSignerMonad m) => (Tx, [UTxO]) -> m (Tx, Haskoin.TxHash)
