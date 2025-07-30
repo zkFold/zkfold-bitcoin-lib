@@ -15,7 +15,7 @@ Library defines following monadic typeclasses, their usage is illustrated in `Zk
 * `BitcoinBuilderMonad`: Allows building for transaction from `TxSkeleton`. Use `runBitcoinBuilderMonadIO` to interact with it.
 * `BitcoinSignerMonad`: Allows signing of built transactions, though only for inputs locked under P2PKH, P2WPKH or a multi-sig (`PayMulSig` type in Haskoin). Use `runBitcoinSignerMonadIO` to interact with it. For complex scripts, see `ZkFold.Bitcoin.Test.RegTest` module for an end-to-end example.
 
-We currently have support for raw bitcoin node (which can be ran in pruned mode, costing little of system's resources) and mempool.space. Instructions on setting up a node are available [here](https://github.com/zkFold/bitcoin-watchtower/issues/2#issuecomment-2955773138).
+We currently have support for raw bitcoin node (which can be ran in pruned mode, costing little of system's resources) and mempool.space.
 
 Note that all methods provided under `BitcoinQueryMonad` are efficient for all the supported providers with following exceptions:
 - `utxosAtAddress` is not efficient for locally ran bitcoin node.
