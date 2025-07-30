@@ -22,6 +22,6 @@ Note that all methods provided under `BitcoinQueryMonad` are efficient for all t
 
 ## RegTest testing machinery
 
-We support convenient transaction building to tests against private (regression) testnet. First we need to set it up by running `zkfold-bitcoin-lib/scripts/regtest.sh` after which we can interact with it as in `ZkFold.Bitcoin.Test.RegTest` module (`cabal run zkfold-bitcoin-lib-test`).
+We support convenient transaction building to tests against private (regression) testnet. First we need to set it up by running `./scripts/regtest.sh` after which we can interact with it as in `ZkFold.Bitcoin.Test.RegTest` module (`cabal run zkfold-bitcoin-lib-test`).
 
 This test setup provides a wallet (identified by `testWalletAddress` in `ZkFold.Bitcoin.Test.Constants`) with 50 BTC initially and a block is minted every 10 seconds.
