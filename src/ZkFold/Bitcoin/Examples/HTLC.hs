@@ -33,6 +33,7 @@ data HTLC = HTLC
   , htlcScriptOutput :: ScriptOutput
   , htlcAddress :: Address
   , htlcSerializedScript :: ByteString
+  , htlcTimelock :: Word32
   }
   deriving stock (Show, Eq, Generic)
 
@@ -44,6 +45,7 @@ mkHTLC ctx secretHash recipientPub refundPub timelock =
       htlcScriptOutput = toP2WSH htlcScript -- toP2SH htlcScript
       htlcAddress = outputAddress ctx htlcScriptOutput & fromJust
       htlcSerializedScript = runPutS $ serialize htlcScript
+      htlcTimelock = timelock
    in HTLC{..}
 
 -- | Fund HTLC contract. Usually, we'll use browser wallet API to send funds to this address instead of this function.
@@ -101,10 +103,10 @@ signAndSubmitRedeemHTLC ctx skey sigHashRedeem secret htlc redeemTx = do
   let sigRedeem = signHash ctx skey sigHashRedeem
   addSigAndSubmitRedeemHTLC ctx sigRedeem secret htlc redeemTx
 
-refundHTLC :: (BitcoinBuilderMonad m) => UTxO -> HTLC -> Word32 -> m (Tx, [UTxO], Hash256)
-refundHTLC refundUTxO HTLC{..} lockedUntil = do
+refundHTLC :: (BitcoinBuilderMonad m) => UTxO -> HTLC -> m (Tx, [UTxO], Hash256)
+refundHTLC refundUTxO HTLC{..} = do
   net <- network
-  (unsignedTx, selectIns) <- buildTx (mustHaveInput refundUTxO <> invalidUntil lockedUntil)
+  (unsignedTx, selectIns) <- buildTx (mustHaveInput refundUTxO <> invalidUntil htlcTimelock)
   let sigHashRefund = txSigHashForkId net unsignedTx htlcScript (utxoValue refundUTxO) 0 sigHashAll
   pure (unsignedTx, selectIns, sigHashRefund)
 

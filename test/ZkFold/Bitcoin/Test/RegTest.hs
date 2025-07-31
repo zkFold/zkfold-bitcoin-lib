@@ -50,10 +50,11 @@ regTestTests =
                 let scriptUTxORedeem = head scriptUTxOs
                     scriptUTxORefund = scriptUTxOs !! 1
                 (redeemTx, _redeemTxSelectIns, sigHashRedeem) <- runBitcoinBuilderMonadIO provider [testWalletAddress2] testWalletAddress2 $ redeemHTLC scriptUTxORedeem htlc
+                step $ "sigHashRedeem: " <> show sigHashRedeem
                 (redeemSignedTx, redeemTxId) <- runBitcoinQueryMonadIO provider $ signAndSubmitRedeemHTLC ctx testWalletXPrvKey2.key sigHashRedeem secret htlc redeemTx
                 step $ "redeemSignedTx: " <> show redeemSignedTx
                 step $ "redeemTxId: " <> show redeemTxId
-                (refundTx, _refundTxSelectIns, sigHashRefund) <- runBitcoinBuilderMonadIO provider [testWalletAddress] testWalletAddress $ refundHTLC scriptUTxORefund htlc lockedUntil
+                (refundTx, _refundTxSelectIns, sigHashRefund) <- runBitcoinBuilderMonadIO provider [testWalletAddress] testWalletAddress $ refundHTLC scriptUTxORefund htlc
                 (refundSignedTx, refundTxId) <- runBitcoinQueryMonadIO provider $ signAndSubmitRefundHTLC ctx testWalletXPrvKey.key sigHashRefund htlc refundTx
                 step $ "refundSignedTx: " <> show refundSignedTx
                 step $ "refundTxId: " <> show refundTxId
