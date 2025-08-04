@@ -7,6 +7,7 @@ module ZkFold.Bitcoin.Examples.HTLC (
   addSigAndSubmitRedeemHTLC,
   signAndSubmitRedeemHTLC,
   refundHTLC,
+  addSigRefundHTLC,
   addSigAndSubmitRefundHTLC,
   signAndSubmitRefundHTLC,
 ) where
@@ -110,8 +111,8 @@ refundHTLC refundUTxO HTLC{..} = do
   let sigHashRefund = txSigHashForkId net unsignedTx htlcScript (utxoValue refundUTxO) 0 sigHashAll
   pure (unsignedTx, selectIns, sigHashRefund)
 
-addSigAndSubmitRefundHTLC :: (BitcoinQueryMonad m) => Ctx -> Haskoin.Sig -> HTLC -> Tx -> m (Tx, Haskoin.TxHash)
-addSigAndSubmitRefundHTLC ctx sigRefund HTLC{..} refundTx = do
+addSigRefundHTLC :: (BitcoinQueryMonad m) => Ctx -> Haskoin.Sig -> HTLC -> Tx -> m Tx
+addSigRefundHTLC ctx sigRefund HTLC{..} refundTx = do
   net <- network
   let txSigRefund = TxSignature sigRefund sigHashAll
       sigBSRefund = encodeTxSig net ctx txSigRefund
@@ -119,6 +120,11 @@ addSigAndSubmitRefundHTLC ctx sigRefund HTLC{..} refundTx = do
       witnessDataRefund = updateIndex 0 (replicate 1 $ toWitnessStack net ctx EmptyWitnessProgram) (const witnessStackRefund)
       finalTx = case refundTx of
         Tx{..} -> Tx{witness = witnessDataRefund, ..}
+  pure finalTx
+
+addSigAndSubmitRefundHTLC :: (BitcoinQueryMonad m) => Ctx -> Haskoin.Sig -> HTLC -> Tx -> m (Tx, Haskoin.TxHash)
+addSigAndSubmitRefundHTLC ctx sigRefund htlc refundTx = do
+  finalTx <- addSigRefundHTLC ctx sigRefund htlc refundTx
   txIdRefund <- submitTx finalTx
   pure (finalTx, txIdRefund)
 
