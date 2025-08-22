@@ -25,11 +25,17 @@ module ZkFold.Bitcoin.Types (
   module ZkFold.Bitcoin.Types.Internal.UTxO,
   module ZkFold.Bitcoin.Types.Internal.NetworkId,
   BlockHeight,
+  Satoshi,
+  Bitcoin,
+  btcToSatoshi,
+  btcFromSatoshi,
+  OutputIx,
 ) where
 
 import ZkFold.Bitcoin.Types.Internal.BlockHash
 import ZkFold.Bitcoin.Types.Internal.BlockHeader
 import ZkFold.Bitcoin.Types.Internal.BlockHeight
+import ZkFold.Bitcoin.Types.Internal.Common
 import ZkFold.Bitcoin.Types.Internal.HexByteString
 import ZkFold.Bitcoin.Types.Internal.NetworkId
 import ZkFold.Bitcoin.Types.Internal.Provider
