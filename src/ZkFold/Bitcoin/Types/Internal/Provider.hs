@@ -2,6 +2,7 @@ module ZkFold.Bitcoin.Types.Internal.Provider (
   BitcoinProvider (..),
   BitcoinProviderConfig (..),
   BitcoinProviderConfigNode (..),
+  BitcoinProviderConfigMempoolSpace (..),
   providerFromConfig,
 ) where
 
