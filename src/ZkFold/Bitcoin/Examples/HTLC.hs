@@ -25,7 +25,6 @@ import Haskoin (Address, Ctx, Hash256, PublicKey, Script (..), ScriptOp (..), Sc
 import Haskoin qualified
 import ZkFold.Bitcoin.Class (BitcoinBuilderMonad (..), BitcoinQueryMonad (..), BitcoinSignerMonad, network, signTx)
 import ZkFold.Bitcoin.Types
-import ZkFold.Bitcoin.Types.Internal.Common (Satoshi)
 import ZkFold.Bitcoin.Types.Internal.Skeleton
 import ZkFold.Bitcoin.Utils (wordToScriptOp)
 

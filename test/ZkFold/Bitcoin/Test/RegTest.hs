@@ -14,7 +14,6 @@ import ZkFold.Bitcoin.Examples.HTLC
 import ZkFold.Bitcoin.IO
 import ZkFold.Bitcoin.Test.Constants (testWalletAddress, testWalletAddress2, testWalletXPrvKey, testWalletXPrvKey2, testWalletXPubKey, testWalletXPubKey2)
 import ZkFold.Bitcoin.Types
-import ZkFold.Bitcoin.Types.Internal.Common (btcToSatoshi)
 
 regTestTests :: TestTree
 regTestTests =

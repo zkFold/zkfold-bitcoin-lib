@@ -1,3 +1,4 @@
+{-# LANGUAGE GADTs #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module ZkFold.Bitcoin.Provider.MempoolSpace (
@@ -20,12 +21,12 @@ import Data.ByteString.Base16 qualified as BS16
 import Data.ByteString.Char8 qualified as BS8
 import Data.Bytes.Put (runPutS)
 import Data.Bytes.Serial (Serial (..))
-import Data.Data (Typeable)
+import Data.Data (Typeable, type (:~~:) (HRefl))
 import Data.Proxy (Proxy (..))
 import Data.Text (Text)
-import Data.Typeable (typeOf)
+import Data.Text qualified as Text
 import Deriving.Aeson
-import Haskoin (Address, OutPoint (..), Tx, TxHash)
+import Haskoin (Address, OutPoint (..), Tx, TxHash, hexToTxHash)
 import Network.HTTP.Media qualified as M
 import Servant.API (
   Accept (..),
@@ -47,6 +48,7 @@ import Servant.Client (
  )
 import Servant.Client qualified as Servant
 import Text.Read (readMaybe)
+import Type.Reflection (eqTypeRep, typeRep)
 import ZkFold.Bitcoin.Provider.Common (newServantClientEnv)
 import ZkFold.Bitcoin.Types.Internal.BlockHash
 import ZkFold.Bitcoin.Types.Internal.BlockHeader
@@ -99,9 +101,17 @@ instance Accept TextPlain where
 newtype PlainTextRead a = PlainTextRead {unPlainTextRead :: a}
 
 instance (Read a, Typeable a) => MimeUnrender TextPlain (PlainTextRead a) where
-  mimeUnrender _ bs = case readMaybe (BS8.unpack (BS8.toStrict bs)) of
-    Just x -> Right (PlainTextRead x)
-    Nothing -> Left $ "Invalid format for " <> show (typeOf (Proxy :: Proxy a))
+  mimeUnrender _ bs =
+    let responseString = BS8.unpack (BS8.toStrict bs)
+     in case eqTypeRep (typeRep @a) (typeRep @TxHash) of
+          Just HRefl ->
+            case hexToTxHash (Text.pack responseString) of
+              Just txh -> Right (PlainTextRead txh)
+              Nothing -> Left $ "Invalid hex string for " <> show (typeRep @TxHash) <> " in response: " <> responseString
+          Nothing ->
+            case readMaybe responseString of
+              Just x -> Right (PlainTextRead x)
+              Nothing -> Left $ "Invalid format for " <> show (typeRep @a) <> " in response: " <> responseString
 
 instance MimeRender PlainText Tx where
   mimeRender _ = BS8.fromStrict . BS16.encode . runPutS . serialize
@@ -162,7 +172,6 @@ mempoolSpaceUtxosAtAddress :: MempoolSpaceApiEnv -> (Text, Address) -> IO [UTxO]
 mempoolSpaceUtxosAtAddress env (addrText, addr) =
   handleMempoolSpaceError "mempoolSpaceUtxosAtAddress" . fmap (fmap (utxoFromMempoolSpaceUtxo addr)) <=< runMempoolSpaceClient env $ addressUtxos addrText
 
--- TODO: Need to test this!
 mempoolSpaceSubmitTx :: MempoolSpaceApiEnv -> Tx -> IO TxHash
 mempoolSpaceSubmitTx env tx =
   handleMempoolSpaceError "mempoolSpaceSubmitTx" . fmap unPlainTextRead <=< runMempoolSpaceClient env $ txHash tx
