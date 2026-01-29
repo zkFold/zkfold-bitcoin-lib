@@ -38,8 +38,8 @@ regTestTests =
             withContext $ \ctx -> do
                 let testWallet2PublicKey = testWalletXPubKey2.key & wrapPubKey True
                     testWalletPublicKey = testWalletXPubKey.key & wrapPubKey True
-                    htlc = mkHTLC ctx secretHash testWallet2PublicKey testWalletPublicKey lockedUntil
-                (fundTx, fundTxSelectIns) <- runBitcoinBuilderMonadIO provider [testWalletAddress] testWalletAddress $ fundHTLC htlc (btcToSatoshi 10) (Just 2) -- Create two outputs, one for testing redeem and other for the refund.
+                    htlc = mkHTLC ctx secretHash testWallet2PublicKey testWalletPublicKey testWallet2PublicKey lockedUntil
+                (fundTx, fundTxSelectIns) <- runBitcoinBuilderMonadIO provider [testWalletAddress] testWalletAddress $ fundHTLC htlc (btcToSatoshi 10) (Just 3) -- Create three outputs: one to redeem, two to test refunds with both keys.
                 (fundSignedTx, fundTxId) <- runBitcoinSignerMonadIO provider [testWalletAddress] testWalletAddress [testWalletXPrvKey.key] $ signAndSubmitFundHTLC (fundTx, fundTxSelectIns)
                 step $ "fundSignedTx: " <> show fundSignedTx
                 step $ "fundTxId: " <> show fundTxId
@@ -47,14 +47,19 @@ regTestTests =
                 scriptUTxOs <- runBitcoinQueryMonadIO provider $ utxosAtAddress htlc.htlcAddress
                 step $ "scriptUTxOs: " <> show scriptUTxOs
                 let scriptUTxORedeem = head scriptUTxOs
-                    scriptUTxORefund = scriptUTxOs !! 1
+                    scriptUTxORefund1 = scriptUTxOs !! 1
+                    scriptUTxORefund2 = scriptUTxOs !! 2
                 (redeemTx, _redeemTxSelectIns, sigHashRedeem) <- runBitcoinBuilderMonadIO provider [testWalletAddress2] testWalletAddress2 $ redeemHTLC scriptUTxORedeem htlc
                 step $ "sigHashRedeem: " <> show sigHashRedeem
                 (redeemSignedTx, redeemTxId) <- runBitcoinQueryMonadIO provider $ signAndSubmitRedeemHTLC ctx testWalletXPrvKey2.key sigHashRedeem secret htlc redeemTx
                 step $ "redeemSignedTx: " <> show redeemSignedTx
                 step $ "redeemTxId: " <> show redeemTxId
-                (refundTx, _refundTxSelectIns, sigHashRefund) <- runBitcoinBuilderMonadIO provider [testWalletAddress] testWalletAddress $ refundHTLC scriptUTxORefund htlc
-                (refundSignedTx, refundTxId) <- runBitcoinQueryMonadIO provider $ signAndSubmitRefundHTLC ctx testWalletXPrvKey.key sigHashRefund htlc refundTx
-                step $ "refundSignedTx: " <> show refundSignedTx
-                step $ "refundTxId: " <> show refundTxId
+                (refundTx1, _refundTxSelectIns1, sigHashRefund1) <- runBitcoinBuilderMonadIO provider [testWalletAddress] testWalletAddress $ refundHTLC scriptUTxORefund1 htlc
+                (refundSignedTx1, refundTxId1) <- runBitcoinQueryMonadIO provider $ signAndSubmitRefundHTLC ctx testWalletXPrvKey.key sigHashRefund1 htlc refundTx1
+                step $ "refundSignedTx1: " <> show refundSignedTx1
+                step $ "refundTxId1: " <> show refundTxId1
+                (refundTx2, _refundTxSelectIns2, sigHashRefund2) <- runBitcoinBuilderMonadIO provider [testWalletAddress2] testWalletAddress2 $ refundHTLC scriptUTxORefund2 htlc
+                (refundSignedTx2, refundTxId2) <- runBitcoinQueryMonadIO provider $ signAndSubmitRefundHTLCAlt ctx testWalletXPrvKey2.key sigHashRefund2 htlc refundTx2
+                step $ "refundSignedTx2 (alt pubkey): " <> show refundSignedTx2
+                step $ "refundTxId2 (alt pubkey): " <> show refundTxId2
         ]
