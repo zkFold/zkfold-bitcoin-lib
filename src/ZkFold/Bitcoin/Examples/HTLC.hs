@@ -39,9 +39,9 @@ data HTLC = HTLC
 
 -- TODO: Give FromJSON and ToJSON instances.
 
-mkHTLC :: Ctx -> Hash256 -> PublicKey -> PublicKey -> Word32 -> HTLC
-mkHTLC ctx secretHash recipientPub refundPub timelock =
-  let htlcScript = buildHTLC ctx secretHash recipientPub refundPub timelock
+mkHTLC :: Ctx -> Hash256 -> PublicKey -> PublicKey -> PublicKey -> Word32 -> HTLC
+mkHTLC ctx secretHash recipientPub refundPub1 refundPub2 timelock =
+  let htlcScript = buildHTLC ctx secretHash recipientPub refundPub1 refundPub2 timelock
       htlcScriptOutput = toP2WSH htlcScript -- toP2SH htlcScript
       htlcAddress = outputAddress ctx htlcScriptOutput & fromJust
       htlcSerializedScript = runPutS $ serialize htlcScript
@@ -132,8 +132,8 @@ signAndSubmitRefundHTLC ctx skey sigHashRefund htlc refundTx = do
   let sigRefund = signHash ctx skey sigHashRefund
   addSigAndSubmitRefundHTLC ctx sigRefund htlc refundTx
 
-buildHTLC :: Ctx -> Hash256 -> PublicKey -> PublicKey -> Word32 -> Script
-buildHTLC ctx secretHash recipientPub refundPub timelock =
+buildHTLC :: Ctx -> Hash256 -> PublicKey -> PublicKey -> PublicKey -> Word32 -> Script
+buildHTLC ctx secretHash recipientPub refundPub1 refundPub2 timelock =
   Script
     [ OP_IF
     , OP_SHA256
@@ -145,7 +145,12 @@ buildHTLC ctx secretHash recipientPub refundPub timelock =
     , wordToScriptOp timelock
     , OP_CHECKLOCKTIMEVERIFY
     , OP_DROP
-    , opPushData (marshal ctx refundPub) -- Push refund pubkey (33 bytes compressed)
+    , OP_DUP
+    , opPushData (marshal ctx refundPub1) -- refund pubkey #1
     , OP_CHECKSIG
+    , OP_SWAP
+    , opPushData (marshal ctx refundPub2) -- refund pubkey #2
+    , OP_CHECKSIG
+    , OP_BOOLOR
     , OP_ENDIF
     ]
