@@ -8,8 +8,11 @@ module ZkFold.Bitcoin.Examples.HTLC (
   signAndSubmitRedeemHTLC,
   refundHTLC,
   addSigRefundHTLC,
+  addSigRefundHTLCAlt,
   addSigAndSubmitRefundHTLC,
+  addSigAndSubmitRefundHTLCAlt,
   signAndSubmitRefundHTLC,
+  signAndSubmitRefundHTLCAlt,
 ) where
 
 import Data.ByteString (ByteString)
@@ -115,7 +118,21 @@ addSigRefundHTLC ctx sigRefund HTLC{..} refundTx = do
   net <- network
   let txSigRefund = TxSignature sigRefund sigHashAll
       sigBSRefund = encodeTxSig net ctx txSigRefund
-      witnessStackRefund = [sigBSRefund, "", htlcSerializedScript]
+      -- select refund key #1 with OP_TRUE (minimal push 0x01)
+      witnessStackRefund = [sigBSRefund, "\x01", "", htlcSerializedScript]
+      witnessDataRefund = updateIndex 0 (replicate 1 $ toWitnessStack net ctx EmptyWitnessProgram) (const witnessStackRefund)
+      finalTx = case refundTx of
+        Tx{..} -> Tx{witness = witnessDataRefund, ..}
+  pure finalTx
+
+-- | Add refund signature using alternative refund pubkey (second key).
+addSigRefundHTLCAlt :: (BitcoinQueryMonad m) => Ctx -> Haskoin.Sig -> HTLC -> Tx -> m Tx
+addSigRefundHTLCAlt ctx sigRefund HTLC{..} refundTx = do
+  net <- network
+  let txSigRefund = TxSignature sigRefund sigHashAll
+      sigBSRefund = encodeTxSig net ctx txSigRefund
+      -- select refund key #2 with OP_FALSE (empty push)
+      witnessStackRefund = [sigBSRefund, "", "", htlcSerializedScript]
       witnessDataRefund = updateIndex 0 (replicate 1 $ toWitnessStack net ctx EmptyWitnessProgram) (const witnessStackRefund)
       finalTx = case refundTx of
         Tx{..} -> Tx{witness = witnessDataRefund, ..}
@@ -127,10 +144,21 @@ addSigAndSubmitRefundHTLC ctx sigRefund htlc refundTx = do
   txIdRefund <- submitTx finalTx
   pure (finalTx, txIdRefund)
 
+addSigAndSubmitRefundHTLCAlt :: (BitcoinQueryMonad m) => Ctx -> Haskoin.Sig -> HTLC -> Tx -> m (Tx, Haskoin.TxHash)
+addSigAndSubmitRefundHTLCAlt ctx sigRefund htlc refundTx = do
+  finalTx <- addSigRefundHTLCAlt ctx sigRefund htlc refundTx
+  txIdRefund <- submitTx finalTx
+  pure (finalTx, txIdRefund)
+
 signAndSubmitRefundHTLC :: (BitcoinQueryMonad m) => Ctx -> Haskoin.SecKey -> Hash256 -> HTLC -> Tx -> m (Tx, Haskoin.TxHash)
 signAndSubmitRefundHTLC ctx skey sigHashRefund htlc refundTx = do
   let sigRefund = signHash ctx skey sigHashRefund
   addSigAndSubmitRefundHTLC ctx sigRefund htlc refundTx
+
+signAndSubmitRefundHTLCAlt :: (BitcoinQueryMonad m) => Ctx -> Haskoin.SecKey -> Hash256 -> HTLC -> Tx -> m (Tx, Haskoin.TxHash)
+signAndSubmitRefundHTLCAlt ctx skey sigHashRefund htlc refundTx = do
+  let sigRefund = signHash ctx skey sigHashRefund
+  addSigAndSubmitRefundHTLCAlt ctx sigRefund htlc refundTx
 
 buildHTLC :: Ctx -> Hash256 -> PublicKey -> PublicKey -> PublicKey -> Word32 -> Script
 buildHTLC ctx secretHash recipientPub refundPub1 refundPub2 timelock =
@@ -145,12 +173,14 @@ buildHTLC ctx secretHash recipientPub refundPub1 refundPub2 timelock =
     , wordToScriptOp timelock
     , OP_CHECKLOCKTIMEVERIFY
     , OP_DROP
-    , OP_DUP
-    , opPushData (marshal ctx refundPub1) -- refund pubkey #1
+    , -- Select which refund key to verify with a boolean flag:
+      -- OP_TRUE selects refundPub1; OP_FALSE selects refundPub2.
+      OP_IF
+    , opPushData (marshal ctx refundPub1)
     , OP_CHECKSIG
-    , OP_SWAP
-    , opPushData (marshal ctx refundPub2) -- refund pubkey #2
+    , OP_ELSE
+    , opPushData (marshal ctx refundPub2)
     , OP_CHECKSIG
-    , OP_BOOLOR
+    , OP_ENDIF
     , OP_ENDIF
     ]

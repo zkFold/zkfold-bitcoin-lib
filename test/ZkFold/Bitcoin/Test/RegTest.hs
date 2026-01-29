@@ -59,7 +59,7 @@ regTestTests =
                 step $ "refundSignedTx1: " <> show refundSignedTx1
                 step $ "refundTxId1: " <> show refundTxId1
                 (refundTx2, _refundTxSelectIns2, sigHashRefund2) <- runBitcoinBuilderMonadIO provider [testWalletAddress2] testWalletAddress2 $ refundHTLC scriptUTxORefund2 htlc
-                (refundSignedTx2, refundTxId2) <- runBitcoinQueryMonadIO provider $ signAndSubmitRefundHTLC ctx testWalletXPrvKey2.key sigHashRefund2 htlc refundTx2
+                (refundSignedTx2, refundTxId2) <- runBitcoinQueryMonadIO provider $ signAndSubmitRefundHTLCAlt ctx testWalletXPrvKey2.key sigHashRefund2 htlc refundTx2
                 step $ "refundSignedTx2 (alt pubkey): " <> show refundSignedTx2
                 step $ "refundTxId2 (alt pubkey): " <> show refundTxId2
         ]

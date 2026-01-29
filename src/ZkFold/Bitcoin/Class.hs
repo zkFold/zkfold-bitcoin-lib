@@ -7,10 +7,9 @@ module ZkFold.Bitcoin.Class (
 
 import Control.Monad.Error.Class (MonadError)
 import Control.Monad.Reader (ReaderT (..), lift)
-import Haskoin (Address, Tx, TxHash, Network)
+import Haskoin (Address, Network, Tx, TxHash)
 import ZkFold.Bitcoin.Errors (BitcoinMonadException)
 import ZkFold.Bitcoin.Types
-import ZkFold.Bitcoin.Types.Internal.Common (Satoshi)
 import ZkFold.Bitcoin.Types.Internal.Skeleton (TxSkeleton)
 
 class (MonadError BitcoinMonadException m) => BitcoinQueryMonad m where
@@ -72,6 +71,6 @@ class (BitcoinBuilderMonad m) => BitcoinSignerMonad m where
   signTx :: (Tx, [UTxO]) -> m Tx
 
 -- | Get the 'Network' of the Bitcoin network.
-network :: BitcoinQueryMonad m => m Network
+network :: (BitcoinQueryMonad m) => m Network
 network = do
   networkFromId <$> networkId
