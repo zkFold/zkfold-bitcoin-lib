@@ -30,12 +30,15 @@ module ZkFold.Bitcoin.Types (
   btcToSatoshi,
   btcFromSatoshi,
   OutputIx,
+  TxConfirmationsConfig (..),
+  defaultTxConfirmationsConfig,
 ) where
 
 import ZkFold.Bitcoin.Types.Internal.BlockHash
 import ZkFold.Bitcoin.Types.Internal.BlockHeader
 import ZkFold.Bitcoin.Types.Internal.BlockHeight
 import ZkFold.Bitcoin.Types.Internal.Common
+import ZkFold.Bitcoin.Types.Internal.Confirmations
 import ZkFold.Bitcoin.Types.Internal.HexByteString
 import ZkFold.Bitcoin.Types.Internal.NetworkId
 import ZkFold.Bitcoin.Types.Internal.Provider

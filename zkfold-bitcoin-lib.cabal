@@ -50,6 +50,7 @@ library
     ZkFold.Bitcoin.Types.Internal.BlockHeader
     ZkFold.Bitcoin.Types.Internal.BlockHeight
     ZkFold.Bitcoin.Types.Internal.Common
+    ZkFold.Bitcoin.Types.Internal.Confirmations
     ZkFold.Bitcoin.Types.Internal.HexByteString
     ZkFold.Bitcoin.Types.Internal.NetworkId
     ZkFold.Bitcoin.Types.Internal.Provider

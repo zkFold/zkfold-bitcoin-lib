@@ -11,7 +11,9 @@ module ZkFold.Bitcoin.Provider.Node (
   NodeProviderException (..),
 ) where
 
+import Control.Applicative ((<|>))
 import Control.Concurrent (threadDelay)
+import Control.Exception (throwIO)
 import Control.Monad ((<=<))
 import Data.Aeson (ToJSON (..))
 import Data.Aeson qualified as Aeson
@@ -19,6 +21,7 @@ import Data.ByteString.Base16 qualified as BS16
 import Data.Bytes.Put (runPutS)
 import Data.Bytes.Serial (Serial (serialize))
 import Data.Function ((&))
+import Data.Maybe (fromMaybe)
 import Data.Proxy (Proxy (..))
 import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8)
@@ -37,6 +40,7 @@ import Servant.Client (
   ClientM,
   client,
  )
+import ZkFold.Bitcoin.Errors (BitcoinMonadException (..))
 import ZkFold.Bitcoin.Provider.Node.ApiEnv
 import ZkFold.Bitcoin.Provider.Node.Class (ToJSONRPC (..))
 import ZkFold.Bitcoin.Provider.Node.Exception (NodeProviderException (..))
@@ -46,10 +50,8 @@ import ZkFold.Bitcoin.Types.Internal.BlockHash (BlockHash)
 import ZkFold.Bitcoin.Types.Internal.BlockHeader (BlockHeader)
 import ZkFold.Bitcoin.Types.Internal.BlockHeight (BlockHeight)
 import ZkFold.Bitcoin.Types.Internal.Common (Bitcoin, LowerFirst, OutputIx, Satoshi, btcToSatoshi)
+import ZkFold.Bitcoin.Types.Internal.Confirmations (TxConfirmationsConfig (..))
 import ZkFold.Bitcoin.Types.Internal.UTxO
-
-pollIntervalMicros :: Int
-pollIntervalMicros = 10 * 1_000_000
 
 data GetBlockCount = GetBlockCount
 
@@ -87,7 +89,7 @@ instance ToJSONRPC GetRawTransaction where
   toParams (GetRawTransaction txHash) = Just (Aeson.Array $ fromList [toJSON txHash, Aeson.Bool True])
 
 newtype RawTransactionInfo = RawTransactionInfo
-  { rtiConfirmations :: Maybe Int
+  { rtiConfirmations :: Maybe BlockHeight
   }
   deriving stock (Show, Generic)
   deriving (FromJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "rti", LowerFirst]] RawTransactionInfo
@@ -181,28 +183,38 @@ nodeSubmitTx :: NodeApiEnv -> Tx -> IO TxHash
 nodeSubmitTx env tx =
   handleNodeError "nodeSubmitTx" <=< runNodeClient env $ submitTx (NodeRequest (SubmitTx tx))
 
-nodeTxConfirmations :: NodeApiEnv -> TxHash -> IO (Maybe Int)
+nodeTxConfirmations :: NodeApiEnv -> TxHash -> IO (Maybe BlockHeight)
 nodeTxConfirmations env txHash = do
   RawTransactionInfo{..} <- handleNodeError "nodeTxConfirmations" <=< runNodeClient env $ getRawTransaction (NodeRequest (GetRawTransaction txHash))
   pure rtiConfirmations
 
-nodeWaitForTxConfirmations :: NodeApiEnv -> TxHash -> BlockHeight -> IO ()
-nodeWaitForTxConfirmations env txHash targetConfirmations = do
-  let target = fromIntegral targetConfirmations :: Int
-  if target <= 0
+nodeWaitForTxConfirmations :: NodeApiEnv -> TxHash -> TxConfirmationsConfig -> IO ()
+nodeWaitForTxConfirmations env txHash config = do
+  let target = tccConfirmations config
+      maxAttempts = tccMaxAttempts config
+  if target == 0
     then pure ()
-    else loop target
+    else
+      if maxAttempts == 0
+        then throwIO $ WaitForTxConfirmationsTimeout txHash config Nothing
+        else loop 1 Nothing target maxAttempts
  where
-  loop target = do
+  loop attempt lastKnown target maxAttempts = do
     confirmations <- nodeTxConfirmations env txHash
-    let current = case confirmations of
-          Nothing -> 0
-          Just n -> max 0 n
+    let current = fromMaybe 0 confirmations
+        lastKnown' = confirmations <|> lastKnown
     if current >= target
       then pure ()
-      else do
-        threadDelay pollIntervalMicros
-        loop target
+      else
+        if attempt >= maxAttempts
+          then throwIO $ WaitForTxConfirmationsTimeout txHash config lastKnown'
+          else do
+            threadDelay $ pollIntervalMicros config
+            loop (attempt + 1) lastKnown' target maxAttempts
+
+pollIntervalMicros :: TxConfirmationsConfig -> Int
+pollIntervalMicros config =
+  max 0 (tccPollIntervalSeconds config) * 1_000_000
 
 -- TODO: To include for mempool outputs?
 nodeUtxosAtAddress :: NodeApiEnv -> (Text, Address) -> IO [UTxO]

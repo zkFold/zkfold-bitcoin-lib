@@ -54,11 +54,13 @@ import Servant.Client (
 import Servant.Client qualified as Servant
 import Text.Read (readMaybe)
 import Type.Reflection (eqTypeRep, typeRep)
+import ZkFold.Bitcoin.Errors (BitcoinMonadException (..))
 import ZkFold.Bitcoin.Provider.Common (newServantClientEnv)
 import ZkFold.Bitcoin.Types.Internal.BlockHash
 import ZkFold.Bitcoin.Types.Internal.BlockHeader
 import ZkFold.Bitcoin.Types.Internal.BlockHeight
 import ZkFold.Bitcoin.Types.Internal.Common (LowerFirst, OutputIx, Satoshi)
+import ZkFold.Bitcoin.Types.Internal.Confirmations (TxConfirmationsConfig (..))
 import ZkFold.Bitcoin.Types.Internal.NetworkId (NetworkId (..))
 import ZkFold.Bitcoin.Types.Internal.UTxO
 
@@ -66,9 +68,6 @@ newtype MempoolSpaceApiEnv = MempoolSpaceApiEnv ClientEnv
 
 mempoolSpaceApiEnvToClientEnv :: MempoolSpaceApiEnv -> ClientEnv
 mempoolSpaceApiEnvToClientEnv (MempoolSpaceApiEnv cEnv) = cEnv
-
-pollIntervalMicros :: Int
-pollIntervalMicros = 10 * 1_000_000
 
 -- | Create a new 'MempoolSpaceApiEnv'.
 newMempoolSpaceApiEnv ::
@@ -203,31 +202,51 @@ mempoolSpaceRecommendedFeeRate :: MempoolSpaceApiEnv -> IO Satoshi
 mempoolSpaceRecommendedFeeRate env =
   handleMempoolSpaceError "mempoolSpaceRecommendedFeeRate" . fmap (\MempoolSpaceFeeResponse{..} -> msfFastestFee) <=< runMempoolSpaceClient env $ recommendedFeeRate
 
-mempoolSpaceWaitForTxConfirmations :: MempoolSpaceApiEnv -> TxHash -> BlockHeight -> IO ()
-mempoolSpaceWaitForTxConfirmations env txId targetConfirmations =
-  if targetConfirmations == 0
-    then pure ()
-    else loop
+mempoolSpaceWaitForTxConfirmations :: MempoolSpaceApiEnv -> TxHash -> TxConfirmationsConfig -> IO ()
+mempoolSpaceWaitForTxConfirmations env txId config
+  | tccConfirmations config == 0 = pure ()
+  | tccMaxAttempts config == 0 = throwIO $ WaitForTxConfirmationsTimeout txId config Nothing
+  | otherwise = loop 1 Nothing
  where
   txIdText = txHashToText txId
-  loop = do
-    MempoolSpaceTxStatus{..} <- handleMempoolSpaceError "mempoolSpaceTxStatus" <=< runMempoolSpaceClient env $ txStatus txIdText
-    if not mstsConfirmed
-      then waitAndRetry
-      else case mstsBlockHeight of
-        Nothing -> waitAndRetry
-        Just confirmedHeight -> do
-          tipHeight <- mempoolSpaceBlockCount env
-          let confirmations =
-                if tipHeight >= confirmedHeight
-                  then tipHeight - confirmedHeight + 1
-                  else 0
-          if confirmations >= targetConfirmations
-            then pure ()
-            else waitAndRetry
-  waitAndRetry = do
-    threadDelay pollIntervalMicros
-    loop
+  loop attempt lastKnown =
+    do
+      MempoolSpaceTxStatus{..} <-
+        handleMempoolSpaceError
+          "mempoolSpaceTxStatus"
+          <=< runMempoolSpaceClient env
+          $ txStatus txIdText
+      if not mstsConfirmed
+        then
+          waitAndRetry attempt lastKnown
+        else case mstsBlockHeight of
+          Nothing -> waitAndRetry attempt lastKnown
+          Just confirmedHeight ->
+            do
+              tipHeight <- mempoolSpaceBlockCount env
+              let confirmations =
+                    if tipHeight >= confirmedHeight
+                      then
+                        tipHeight - confirmedHeight + 1
+                      else
+                        0
+                  lastKnown' = Just confirmations
+              if confirmations >= tccConfirmations config
+                then
+                  pure ()
+                else
+                  waitAndRetry attempt lastKnown'
+  waitAndRetry attempt lastKnown =
+    if attempt >= tccMaxAttempts config
+      then
+        throwIO $ WaitForTxConfirmationsTimeout txId config lastKnown
+      else do
+        threadDelay $ pollIntervalMicros config
+        loop (attempt + 1) lastKnown
+
+pollIntervalMicros :: TxConfirmationsConfig -> Int
+pollIntervalMicros config =
+  max 0 (tccPollIntervalSeconds config) * 1_000_000
 
 txHashToText :: TxHash -> Text
 txHashToText txHashValue =

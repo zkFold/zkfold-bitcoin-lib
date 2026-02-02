@@ -10,7 +10,6 @@ import Control.Monad.Reader (ReaderT (..), lift)
 import Haskoin (Address, Network, Tx, TxHash)
 import ZkFold.Bitcoin.Errors (BitcoinMonadException)
 import ZkFold.Bitcoin.Types
-import ZkFold.Bitcoin.Types.Internal.Common (Satoshi)
 import ZkFold.Bitcoin.Types.Internal.Skeleton (TxSkeleton)
 
 class (MonadError BitcoinMonadException m) => BitcoinQueryMonad m where
@@ -45,7 +44,7 @@ class (MonadError BitcoinMonadException m) => BitcoinQueryMonad m where
   recommendedFeeRate :: m Satoshi
 
   -- | Wait until a transaction has at least the given number of confirmations.
-  waitForTxConfirmations :: TxHash -> BlockHeight -> m ()
+  waitForTxConfirmations :: TxHash -> TxConfirmationsConfig -> m ()
 
 instance (BitcoinQueryMonad m) => BitcoinQueryMonad (ReaderT r m) where
   blockCount = lift blockCount
@@ -56,7 +55,7 @@ instance (BitcoinQueryMonad m) => BitcoinQueryMonad (ReaderT r m) where
   submitTx = lift . submitTx
   networkId = lift networkId
   recommendedFeeRate = lift recommendedFeeRate
-  waitForTxConfirmations txHash confirmations = lift $ waitForTxConfirmations txHash confirmations
+  waitForTxConfirmations txHash config = lift $ waitForTxConfirmations txHash config
 
 class (BitcoinQueryMonad m) => BitcoinBuilderMonad m where
   {-# MINIMAL buildTx #-}

@@ -76,9 +76,9 @@ instance BitcoinQueryMonad BitcoinQueryMonadIO where
     provider <- ask
     ioToBitcoinQueryMonadIO $ bpRecommendedFeeRate provider
 
-  waitForTxConfirmations txHash confirmations = do
+  waitForTxConfirmations txHash config = do
     provider <- ask
-    ioToBitcoinQueryMonadIO $ bpWaitForTxConfirmations provider txHash confirmations
+    ioToBitcoinQueryMonadIO $ bpWaitForTxConfirmations provider txHash config
 
 {- | INTERNAL USAGE ONLY
 

@@ -17,6 +17,7 @@ import ZkFold.Bitcoin.Types.Internal.BlockHash (BlockHash)
 import ZkFold.Bitcoin.Types.Internal.BlockHeader (BlockHeader)
 import ZkFold.Bitcoin.Types.Internal.BlockHeight (BlockHeight)
 import ZkFold.Bitcoin.Types.Internal.Common (LowerFirst, Satoshi)
+import ZkFold.Bitcoin.Types.Internal.Confirmations (TxConfirmationsConfig)
 import ZkFold.Bitcoin.Types.Internal.NetworkId (NetworkId, networkFromId)
 import ZkFold.Bitcoin.Types.Internal.UTxO (UTxO)
 
@@ -53,7 +54,7 @@ data BitcoinProvider = BitcoinProvider
   , bpSubmitTx :: Tx -> IO TxHash
   , bpNetworkId :: NetworkId
   , bpRecommendedFeeRate :: IO Satoshi
-  , bpWaitForTxConfirmations :: TxHash -> BlockHeight -> IO ()
+  , bpWaitForTxConfirmations :: TxHash -> TxConfirmationsConfig -> IO ()
   }
 
 -- | Create a 'BitcoinProvider' from a 'BitcoinProviderConfig'.
