@@ -76,6 +76,10 @@ instance BitcoinQueryMonad BitcoinQueryMonadIO where
     provider <- ask
     ioToBitcoinQueryMonadIO $ bpRecommendedFeeRate provider
 
+  waitForTxConfirmations txHash confirmations = do
+    provider <- ask
+    ioToBitcoinQueryMonadIO $ bpWaitForTxConfirmations provider txHash confirmations
+
 {- | INTERNAL USAGE ONLY
 
 Do not expose a 'MonadIO' instance for 'BitcoinQueryMonadIO', as it is not safe to run arbitrary IO actions in the context of a 'BitcoinQueryMonadIO' action.

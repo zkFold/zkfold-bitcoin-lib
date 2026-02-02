@@ -6,10 +6,12 @@ module ZkFold.Bitcoin.Provider.Node (
   nodeSubmitTx,
   nodeUtxosAtAddress,
   nodeRecommendedFeeRate,
+  nodeWaitForTxConfirmations,
   module ZkFold.Bitcoin.Provider.Node.ApiEnv,
   NodeProviderException (..),
 ) where
 
+import Control.Concurrent (threadDelay)
 import Control.Monad ((<=<))
 import Data.Aeson (ToJSON (..))
 import Data.Aeson qualified as Aeson
@@ -46,6 +48,9 @@ import ZkFold.Bitcoin.Types.Internal.BlockHeight (BlockHeight)
 import ZkFold.Bitcoin.Types.Internal.Common (Bitcoin, LowerFirst, OutputIx, Satoshi, btcToSatoshi)
 import ZkFold.Bitcoin.Types.Internal.UTxO
 
+pollIntervalMicros :: Int
+pollIntervalMicros = 10 * 1_000_000
+
 data GetBlockCount = GetBlockCount
 
 instance ToJSONRPC GetBlockCount where
@@ -74,6 +79,18 @@ newtype SubmitTx = SubmitTx Tx
 instance ToJSONRPC SubmitTx where
   toMethod = const "sendrawtransaction"
   toParams (SubmitTx tx) = Just (Aeson.Array $ fromList [serialize tx & runPutS & BS16.encode & decodeUtf8 & Aeson.String])
+
+newtype GetRawTransaction = GetRawTransaction TxHash
+
+instance ToJSONRPC GetRawTransaction where
+  toMethod = const "getrawtransaction"
+  toParams (GetRawTransaction txHash) = Just (Aeson.Array $ fromList [toJSON txHash, Aeson.Bool True])
+
+newtype RawTransactionInfo = RawTransactionInfo
+  { rtiConfirmations :: Maybe Int
+  }
+  deriving stock (Show, Generic)
+  deriving (FromJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "rti", LowerFirst]] RawTransactionInfo
 
 newtype ScanTxOutSet = ScanTxOutSet Text
 
@@ -123,6 +140,7 @@ type NodeApi =
     :<|> ReqBody '[JSON] (NodeRequest GetBlockHeader) :> Post '[JSON] (NodeResponse BlockHeader)
     :<|> ReqBody '[JSON] (NodeRequest GetBlockHash) :> Post '[JSON] (NodeResponse BlockHash)
     :<|> ReqBody '[JSON] (NodeRequest SubmitTx) :> Post '[JSON] (NodeResponse TxHash)
+    :<|> ReqBody '[JSON] (NodeRequest GetRawTransaction) :> Post '[JSON] (NodeResponse RawTransactionInfo)
     :<|> ReqBody '[JSON] (NodeRequest ScanTxOutSet) :> Post '[JSON] (NodeResponse ScanTxOutSetResponse)
     :<|> ReqBody '[JSON] (NodeRequest EstimateSmartFee) :> Post '[JSON] (NodeResponse EstimateSmartFeeResponse)
 
@@ -131,6 +149,7 @@ bestBlockHash :: NodeRequest GetBestBlockHash -> ClientM (NodeResponse BlockHash
 blockHeader :: NodeRequest GetBlockHeader -> ClientM (NodeResponse BlockHeader)
 blockHash :: NodeRequest GetBlockHash -> ClientM (NodeResponse BlockHash)
 submitTx :: NodeRequest SubmitTx -> ClientM (NodeResponse TxHash)
+getRawTransaction :: NodeRequest GetRawTransaction -> ClientM (NodeResponse RawTransactionInfo)
 scanTxOutSet :: NodeRequest ScanTxOutSet -> ClientM (NodeResponse ScanTxOutSetResponse)
 estimateSmartFee :: NodeRequest EstimateSmartFee -> ClientM (NodeResponse EstimateSmartFeeResponse)
 blockCount
@@ -138,6 +157,7 @@ blockCount
   :<|> blockHeader
   :<|> blockHash
   :<|> submitTx
+  :<|> getRawTransaction
   :<|> scanTxOutSet
   :<|> estimateSmartFee = client @NodeApi Proxy
 
@@ -160,6 +180,29 @@ nodeBlockHash env givenHeight =
 nodeSubmitTx :: NodeApiEnv -> Tx -> IO TxHash
 nodeSubmitTx env tx =
   handleNodeError "nodeSubmitTx" <=< runNodeClient env $ submitTx (NodeRequest (SubmitTx tx))
+
+nodeTxConfirmations :: NodeApiEnv -> TxHash -> IO (Maybe Int)
+nodeTxConfirmations env txHash = do
+  RawTransactionInfo{..} <- handleNodeError "nodeTxConfirmations" <=< runNodeClient env $ getRawTransaction (NodeRequest (GetRawTransaction txHash))
+  pure rtiConfirmations
+
+nodeWaitForTxConfirmations :: NodeApiEnv -> TxHash -> BlockHeight -> IO ()
+nodeWaitForTxConfirmations env txHash targetConfirmations = do
+  let target = fromIntegral targetConfirmations :: Int
+  if target <= 0
+    then pure ()
+    else loop target
+ where
+  loop target = do
+    confirmations <- nodeTxConfirmations env txHash
+    let current = case confirmations of
+          Nothing -> 0
+          Just n -> max 0 n
+    if current >= target
+      then pure ()
+      else do
+        threadDelay pollIntervalMicros
+        loop target
 
 -- TODO: To include for mempool outputs?
 nodeUtxosAtAddress :: NodeApiEnv -> (Text, Address) -> IO [UTxO]

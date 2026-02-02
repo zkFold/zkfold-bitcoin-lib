@@ -12,11 +12,15 @@ module ZkFold.Bitcoin.Provider.MempoolSpace (
   mempoolSpaceUtxosAtAddress,
   mempoolSpaceSubmitTx,
   mempoolSpaceRecommendedFeeRate,
+  mempoolSpaceWaitForTxConfirmations,
   MempoolSpaceApiError (..),
 ) where
 
+import Control.Concurrent (threadDelay)
 import Control.Exception (Exception, throwIO)
 import Control.Monad ((<=<))
+import Data.Aeson (FromJSON (..), (.:), (.:?))
+import Data.Aeson qualified as Aeson
 import Data.ByteString (ByteString)
 import Data.ByteString.Base16 qualified as BS16
 import Data.ByteString.Char8 qualified as BS8
@@ -62,6 +66,9 @@ newtype MempoolSpaceApiEnv = MempoolSpaceApiEnv ClientEnv
 
 mempoolSpaceApiEnvToClientEnv :: MempoolSpaceApiEnv -> ClientEnv
 mempoolSpaceApiEnvToClientEnv (MempoolSpaceApiEnv cEnv) = cEnv
+
+pollIntervalMicros :: Int
+pollIntervalMicros = 10 * 1_000_000
 
 -- | Create a new 'MempoolSpaceApiEnv'.
 newMempoolSpaceApiEnv ::
@@ -134,6 +141,19 @@ newtype MempoolSpaceFeeResponse = MempoolSpaceFeeResponse
   deriving stock (Show, Generic)
   deriving (FromJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "msf", LowerFirst]] MempoolSpaceFeeResponse
 
+data MempoolSpaceTxStatus = MempoolSpaceTxStatus
+  { mstsConfirmed :: Bool
+  , mstsBlockHeight :: Maybe BlockHeight
+  }
+  deriving stock (Show, Generic)
+
+instance FromJSON MempoolSpaceTxStatus where
+  parseJSON =
+    Aeson.withObject "MempoolSpaceTxStatus" $ \obj ->
+      MempoolSpaceTxStatus
+        <$> obj .: "confirmed"
+        <*> obj .:? "block_height"
+
 type MempoolSpaceApi =
   "blocks" :> "tip" :> "height" :> Get '[TextPlain] (PlainTextRead BlockHeight) -- Unfortunately, mempool.space returns a plain text response instead of JSON.
     :<|> "blocks" :> "tip" :> "hash" :> Get '[TextPlain] (PlainTextRead BlockHash)
@@ -141,6 +161,7 @@ type MempoolSpaceApi =
     :<|> "block-height" :> Capture "blockHeight" BlockHeight :> Get '[TextPlain] (PlainTextRead BlockHash)
     :<|> "address" :> Capture "address" Text :> "utxo" :> Get '[JSON] [MempoolSpaceUtxo]
     :<|> "tx" :> ReqBody '[PlainText] Tx :> Post '[TextPlain] (PlainTextRead TxHash)
+    :<|> "tx" :> Capture "txid" Text :> "status" :> Get '[JSON] MempoolSpaceTxStatus
     :<|> "v1" :> "fees" :> "recommended" :> Get '[JSON] MempoolSpaceFeeResponse
 
 blockCount :: ClientM (PlainTextRead BlockHeight)
@@ -149,8 +170,9 @@ blockHeader :: BlockHash -> ClientM (PlainTextRead BlockHeader)
 blockHash :: BlockHeight -> ClientM (PlainTextRead BlockHash)
 addressUtxos :: Text -> ClientM [MempoolSpaceUtxo]
 txHash :: Tx -> ClientM (PlainTextRead TxHash)
+txStatus :: Text -> ClientM MempoolSpaceTxStatus
 recommendedFeeRate :: ClientM MempoolSpaceFeeResponse
-blockCount :<|> blockTipHash :<|> blockHeader :<|> blockHash :<|> addressUtxos :<|> txHash :<|> recommendedFeeRate = client @MempoolSpaceApi Proxy
+blockCount :<|> blockTipHash :<|> blockHeader :<|> blockHash :<|> addressUtxos :<|> txHash :<|> txStatus :<|> recommendedFeeRate = client @MempoolSpaceApi Proxy
 
 mempoolSpaceBlockCount :: MempoolSpaceApiEnv -> IO BlockHeight
 mempoolSpaceBlockCount env =
@@ -180,3 +202,35 @@ mempoolSpaceSubmitTx env tx =
 mempoolSpaceRecommendedFeeRate :: MempoolSpaceApiEnv -> IO Satoshi
 mempoolSpaceRecommendedFeeRate env =
   handleMempoolSpaceError "mempoolSpaceRecommendedFeeRate" . fmap (\MempoolSpaceFeeResponse{..} -> msfFastestFee) <=< runMempoolSpaceClient env $ recommendedFeeRate
+
+mempoolSpaceWaitForTxConfirmations :: MempoolSpaceApiEnv -> TxHash -> BlockHeight -> IO ()
+mempoolSpaceWaitForTxConfirmations env txId targetConfirmations =
+  if targetConfirmations == 0
+    then pure ()
+    else loop
+ where
+  txIdText = txHashToText txId
+  loop = do
+    MempoolSpaceTxStatus{..} <- handleMempoolSpaceError "mempoolSpaceTxStatus" <=< runMempoolSpaceClient env $ txStatus txIdText
+    if not mstsConfirmed
+      then waitAndRetry
+      else case mstsBlockHeight of
+        Nothing -> waitAndRetry
+        Just confirmedHeight -> do
+          tipHeight <- mempoolSpaceBlockCount env
+          let confirmations =
+                if tipHeight >= confirmedHeight
+                  then tipHeight - confirmedHeight + 1
+                  else 0
+          if confirmations >= targetConfirmations
+            then pure ()
+            else waitAndRetry
+  waitAndRetry = do
+    threadDelay pollIntervalMicros
+    loop
+
+txHashToText :: TxHash -> Text
+txHashToText txHashValue =
+  case Aeson.toJSON txHashValue of
+    Aeson.String txHashText -> txHashText
+    _ -> error "TxHash JSON encoding is not a string"
