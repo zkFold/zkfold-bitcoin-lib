@@ -7,7 +7,7 @@ import Data.Text.Encoding (encodeUtf8)
 import Haskoin (sha256, withContext, wrapPubKey)
 import Haskoin qualified
 import Test.Tasty
-import Test.Tasty.HUnit (testCaseSteps)
+import Test.Tasty.HUnit (assertEqual, testCaseSteps)
 import ZkFold.Bitcoin.Class (BitcoinQueryMonad (..))
 import ZkFold.Bitcoin.Examples.HTLC
 import ZkFold.Bitcoin.IO
@@ -42,18 +42,22 @@ regTestTests =
                 (fundSignedTx, fundTxId) <- runBitcoinSignerMonadIO provider [testWalletAddress] testWalletAddress [testWalletXPrvKey.key] $ signAndSubmitFundHTLC (fundTx, fundTxSelectIns)
                 step $ "fundSignedTx: " <> show fundSignedTx
                 step $ "fundTxId: " <> show fundTxId
+                let confirmations = 2
                 runBitcoinQueryMonadIO provider $
                     waitForTxConfirmations
                         fundTxId
                         ( TxConfirmationsConfig
-                            { tccConfirmations = 2
+                            { tccConfirmations = confirmations
                             , tccPollIntervalSeconds = 1
                             , tccMaxAttempts = 30
                             }
                         )
                 currentBlockHeight' <- runBitcoinQueryMonadIO provider blockCount
                 step $ "currentBlockHeight': " <> show currentBlockHeight'
-                -- \^ Should be tccConfirmations + the previous block height.
+                assertEqual
+                    "block height advanced by tccConfirmations"
+                    (currentBlockHeight + confirmations)
+                    currentBlockHeight'
                 scriptUTxOs <- runBitcoinQueryMonadIO provider $ utxosAtAddress htlc.htlcAddress
                 step $ "scriptUTxOs: " <> show scriptUTxOs
                 let scriptUTxORedeem = head scriptUTxOs
