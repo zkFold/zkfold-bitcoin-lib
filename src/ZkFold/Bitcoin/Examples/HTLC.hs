@@ -2,6 +2,7 @@ module ZkFold.Bitcoin.Examples.HTLC (
   HTLC (..),
   mkHTLC,
   fundHTLC,
+  fundHTLCWithRecoveryData,
   signAndSubmitFundHTLC,
   redeemHTLC,
   addSigAndSubmitRedeemHTLC,
@@ -16,6 +17,7 @@ module ZkFold.Bitcoin.Examples.HTLC (
 ) where
 
 import Data.ByteString (ByteString)
+import Data.ByteString qualified as BS
 import Data.Bytes.Put (runPutS)
 import Data.Bytes.Serial (Serial (..))
 import Data.Function ((&))
@@ -24,7 +26,7 @@ import Data.Semigroup (stimesMonoid)
 import Data.Word (Word32)
 import GHC.Generics (Generic)
 import GHC.Natural (Natural)
-import Haskoin (Address, Ctx, Hash256, PublicKey, Script (..), ScriptOp (..), ScriptOutput, Tx (..), TxSignature (..), WitnessProgram (..), encodeTxSig, marshal, opPushData, outputAddress, sigHashAll, signHash, toP2WSH, toWitnessStack, txSigHashForkId, updateIndex)
+import Haskoin (Address, Ctx, Hash256, PublicKey, Script (..), ScriptOp (..), ScriptOutput (..), Tx (..), TxSignature (..), WitnessProgram (..), encodeTxSig, marshal, opPushData, outputAddress, sigHashAll, signHash, toP2WSH, toWitnessStack, txSigHashForkId, updateIndex)
 import Haskoin qualified
 import ZkFold.Bitcoin.Class (BitcoinBuilderMonad (..), BitcoinQueryMonad (..), BitcoinSignerMonad, network, signTx)
 import ZkFold.Bitcoin.Types
@@ -55,6 +57,16 @@ mkHTLC ctx secretHash recipientPub refundPub1 refundPub2 timelock =
 fundHTLC :: (BitcoinBuilderMonad m) => HTLC -> Satoshi -> Maybe Natural -> m (Tx, [UTxO])
 fundHTLC HTLC{..} sats numOuts = do
   (tx, selectIns) <- buildTx $ stimesMonoid (fromMaybe 1 numOuts) $ mustHaveOutput (htlcScriptOutput, sats)
+  pure (tx, selectIns)
+
+-- | Fund HTLC and also add a small OP_RETURN output with recovery data.
+fundHTLCWithRecoveryData :: (BitcoinBuilderMonad m) => Ctx -> Hash256 -> PublicKey -> HTLC -> Satoshi -> Maybe Natural -> m (Tx, [UTxO])
+fundHTLCWithRecoveryData ctx secretHash refundPub1 HTLC{..} sats numOuts = do
+  let recoveryOutput = htlcRecoveryOutput ctx secretHash refundPub1
+  (tx, selectIns) <-
+    buildTx $
+      stimesMonoid (fromMaybe 1 numOuts) (mustHaveOutput (htlcScriptOutput, sats))
+        <> mustHaveOutput (recoveryOutput, 0)
   pure (tx, selectIns)
 
 signAndSubmitFundHTLC :: (BitcoinSignerMonad m) => (Tx, [UTxO]) -> m (Tx, Haskoin.TxHash)
@@ -184,3 +196,16 @@ buildHTLC ctx secretHash recipientPub refundPub1 refundPub2 timelock =
     , OP_ENDIF
     , OP_ENDIF
     ]
+
+htlcRecoveryTag :: ByteString
+htlcRecoveryTag = "ZKHTLC1"
+
+htlcRecoveryPayload :: Ctx -> Hash256 -> PublicKey -> ByteString
+htlcRecoveryPayload ctx secretHash refundPub1 =
+  let secretHashBS = runPutS $ serialize secretHash
+      refundPub1BS = marshal ctx refundPub1
+   in BS.concat [htlcRecoveryTag, secretHashBS, refundPub1BS]
+
+htlcRecoveryOutput :: Ctx -> Hash256 -> PublicKey -> ScriptOutput
+htlcRecoveryOutput ctx secretHash refundPub1 =
+  DataCarrier (htlcRecoveryPayload ctx secretHash refundPub1)
