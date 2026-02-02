@@ -12,6 +12,7 @@ module ZkFold.Bitcoin.Provider.MempoolSpace (
   mempoolSpaceUtxosAtAddress,
   mempoolSpaceSubmitTx,
   mempoolSpaceRecommendedFeeRate,
+  MempoolSpaceApiError (..),
 ) where
 
 import Control.Exception (Exception, throwIO)
