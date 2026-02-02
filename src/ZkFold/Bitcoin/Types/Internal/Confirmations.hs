@@ -1,6 +1,7 @@
 module ZkFold.Bitcoin.Types.Internal.Confirmations (
   TxConfirmationsConfig (..),
   defaultTxConfirmationsConfig,
+  pollIntervalMicros,
 ) where
 
 import GHC.Natural (Natural)
@@ -22,3 +23,7 @@ defaultTxConfirmationsConfig =
     , tccPollIntervalSeconds = 10
     , tccMaxAttempts = 60
     }
+
+pollIntervalMicros :: TxConfirmationsConfig -> Int
+pollIntervalMicros config =
+  max 0 (tccPollIntervalSeconds config) * 1_000_000

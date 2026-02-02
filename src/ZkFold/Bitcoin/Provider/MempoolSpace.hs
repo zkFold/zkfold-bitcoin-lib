@@ -60,7 +60,7 @@ import ZkFold.Bitcoin.Types.Internal.BlockHash
 import ZkFold.Bitcoin.Types.Internal.BlockHeader
 import ZkFold.Bitcoin.Types.Internal.BlockHeight
 import ZkFold.Bitcoin.Types.Internal.Common (LowerFirst, OutputIx, Satoshi)
-import ZkFold.Bitcoin.Types.Internal.Confirmations (TxConfirmationsConfig (..))
+import ZkFold.Bitcoin.Types.Internal.Confirmations (TxConfirmationsConfig (..), pollIntervalMicros)
 import ZkFold.Bitcoin.Types.Internal.NetworkId (NetworkId (..))
 import ZkFold.Bitcoin.Types.Internal.UTxO
 
@@ -243,10 +243,6 @@ mempoolSpaceWaitForTxConfirmations env txId config
       else do
         threadDelay $ pollIntervalMicros config
         loop (attempt + 1) lastKnown
-
-pollIntervalMicros :: TxConfirmationsConfig -> Int
-pollIntervalMicros config =
-  max 0 (tccPollIntervalSeconds config) * 1_000_000
 
 txHashToText :: TxHash -> Text
 txHashToText txHashValue =

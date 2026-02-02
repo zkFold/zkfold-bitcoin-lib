@@ -50,7 +50,7 @@ import ZkFold.Bitcoin.Types.Internal.BlockHash (BlockHash)
 import ZkFold.Bitcoin.Types.Internal.BlockHeader (BlockHeader)
 import ZkFold.Bitcoin.Types.Internal.BlockHeight (BlockHeight)
 import ZkFold.Bitcoin.Types.Internal.Common (Bitcoin, LowerFirst, OutputIx, Satoshi, btcToSatoshi)
-import ZkFold.Bitcoin.Types.Internal.Confirmations (TxConfirmationsConfig (..))
+import ZkFold.Bitcoin.Types.Internal.Confirmations (TxConfirmationsConfig (..), pollIntervalMicros)
 import ZkFold.Bitcoin.Types.Internal.UTxO
 
 data GetBlockCount = GetBlockCount
@@ -211,10 +211,6 @@ nodeWaitForTxConfirmations env txHash config = do
           else do
             threadDelay $ pollIntervalMicros config
             loop (attempt + 1) lastKnown' target maxAttempts
-
-pollIntervalMicros :: TxConfirmationsConfig -> Int
-pollIntervalMicros config =
-  max 0 (tccPollIntervalSeconds config) * 1_000_000
 
 -- TODO: To include for mempool outputs?
 nodeUtxosAtAddress :: NodeApiEnv -> (Text, Address) -> IO [UTxO]
