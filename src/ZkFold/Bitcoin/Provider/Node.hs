@@ -15,13 +15,13 @@ module ZkFold.Bitcoin.Provider.Node (
 import Control.Concurrent (threadDelay)
 import Control.Exception (catch, throwIO)
 import Control.Monad ((<=<))
-import Data.Aeson (ToJSON (..), Value (..), (.:))
+import Data.Aeson (ToJSON (..))
 import Data.Aeson qualified as Aeson
-import Data.Aeson.Types (parseMaybe)
 import Data.ByteString.Base16 qualified as BS16
 import Data.Bytes.Put (runPutS)
 import Data.Bytes.Serial (Serial (serialize))
 import Data.Function ((&))
+import Data.List (isInfixOf)
 import Data.Maybe (fromMaybe)
 import Data.Proxy (Proxy (..))
 import Data.Text (Text)
@@ -192,15 +192,14 @@ nodeTxConfirmations env txHash =
   )
     `catch` \err ->
       case err of
-        NodeErrorResponse _ errValue | isTxNotFound errValue -> pure 0
+        NodeApiError _ errValue | isTxNotFound (show errValue) -> pure 0
         _ -> throwIO err
 
-isTxNotFound :: Value -> Bool
-isTxNotFound value = case value of
-  Object obj -> case parseMaybe (.: "code") obj of
-    Just (-5 :: Int) -> True
-    _ -> False
-  _ -> False
+isTxNotFound :: String -> Bool
+isTxNotFound errStr =
+  notFoundMessage `isInfixOf` errStr
+ where
+  notFoundMessage = "No such mempool or blockchain transaction"
 
 nodeWaitForTxConfirmations :: NodeApiEnv -> TxHash -> TxConfirmationsConfig -> IO ()
 nodeWaitForTxConfirmations env txHash config = do
