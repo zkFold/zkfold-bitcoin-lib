@@ -55,6 +55,7 @@ data BitcoinProvider = BitcoinProvider
   , bpNetworkId :: NetworkId
   , bpRecommendedFeeRate :: IO Satoshi
   , bpWaitForTxConfirmations :: TxHash -> TxConfirmationsConfig -> IO ()
+  , bpTxConfirmations :: TxHash -> IO (Maybe BlockHeight)
   }
 
 -- | Create a 'BitcoinProvider' from a 'BitcoinProviderConfig'.
@@ -74,6 +75,7 @@ providerFromConfig (BPCNode (BitcoinProviderConfigNode{..})) = do
       , bpNetworkId = bpcnNetworkId
       , bpRecommendedFeeRate = nodeRecommendedFeeRate env
       , bpWaitForTxConfirmations = nodeWaitForTxConfirmations env
+      , bpTxConfirmations = nodeTxConfirmations env
       }
 providerFromConfig (BPCMempoolSpace (BitcoinProviderConfigMempoolSpace{..})) = do
   env <- newMempoolSpaceApiEnv bpcmsNetworkId
@@ -90,6 +92,7 @@ providerFromConfig (BPCMempoolSpace (BitcoinProviderConfigMempoolSpace{..})) = d
       , bpNetworkId = bpcmsNetworkId
       , bpRecommendedFeeRate = mempoolSpaceRecommendedFeeRate env
       , bpWaitForTxConfirmations = mempoolSpaceWaitForTxConfirmations env
+      , bpTxConfirmations = mempoolSpaceTxConfirmations env
       }
 
 resolveAddress :: Address -> NetworkId -> IO Text

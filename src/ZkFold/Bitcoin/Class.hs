@@ -14,7 +14,7 @@ import ZkFold.Bitcoin.Types
 import ZkFold.Bitcoin.Types.Internal.Skeleton (TxSkeleton)
 
 class (MonadError BitcoinMonadException m) => BitcoinQueryMonad m where
-  {-# MINIMAL blockCount, bestBlockHash, blockHeader, blockHash, utxosAtAddress, submitTx, networkId, recommendedFeeRate, waitForTxConfirmations #-}
+  {-# MINIMAL blockCount, bestBlockHash, blockHeader, blockHash, utxosAtAddress, submitTx, networkId, recommendedFeeRate, waitForTxConfirmations, txConfirmations #-}
 
   -- | Get the height of the most-work fully-validated chain.
   blockCount :: m BlockHeight
@@ -47,6 +47,9 @@ class (MonadError BitcoinMonadException m) => BitcoinQueryMonad m where
   -- | Wait until a transaction has at least the given number of confirmations.
   waitForTxConfirmations :: TxHash -> TxConfirmationsConfig -> m ()
 
+  -- | Get the confirmation count of a transaction.
+  txConfirmations :: TxHash -> m (Maybe BlockHeight)
+
 instance (BitcoinQueryMonad m) => BitcoinQueryMonad (ReaderT r m) where
   blockCount = lift blockCount
   bestBlockHash = lift bestBlockHash
@@ -57,6 +60,7 @@ instance (BitcoinQueryMonad m) => BitcoinQueryMonad (ReaderT r m) where
   networkId = lift networkId
   recommendedFeeRate = lift recommendedFeeRate
   waitForTxConfirmations txHash config = lift $ waitForTxConfirmations txHash config
+  txConfirmations txHash = lift $ txConfirmations txHash
 
 class (BitcoinQueryMonad m) => BitcoinBuilderMonad m where
   {-# MINIMAL buildTx #-}

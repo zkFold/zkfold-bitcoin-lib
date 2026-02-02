@@ -4,6 +4,7 @@ module ZkFold.Bitcoin.Provider.Node (
   nodeBlockHeader,
   nodeBlockHash,
   nodeSubmitTx,
+  nodeTxConfirmations,
   nodeUtxosAtAddress,
   nodeRecommendedFeeRate,
   nodeWaitForTxConfirmations,
