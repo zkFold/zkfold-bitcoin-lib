@@ -4,30 +4,42 @@ module ZkFold.Bitcoin.Test.RegTest (regTestTests) where
 
 import Data.Function ((&))
 import Data.Text.Encoding (encodeUtf8)
-import Haskoin (sha256, withContext, wrapPubKey)
+import Haskoin (hexToTxHash, sha256, withContext, wrapPubKey)
 import Haskoin qualified
 import Test.Tasty
-import Test.Tasty.HUnit (assertEqual, testCaseSteps)
+import Test.Tasty.HUnit (assertEqual, assertFailure, testCase, testCaseSteps)
 import ZkFold.Bitcoin.Class (BitcoinQueryMonad (..))
 import ZkFold.Bitcoin.Examples.HTLC
 import ZkFold.Bitcoin.IO
 import ZkFold.Bitcoin.Test.Constants (testWalletAddress, testWalletAddress2, testWalletXPrvKey, testWalletXPrvKey2, testWalletXPubKey, testWalletXPubKey2)
 import ZkFold.Bitcoin.Types
 
+providerConfig :: BitcoinProviderConfig
+providerConfig =
+    BPCNode
+        ( BitcoinProviderConfigNode
+            { bpcnUsername = "user"
+            , bpcnPassword = "password"
+            , bpcnUrl = "http://localhost:18443"
+            , bpcnNetworkId = RegTest
+            }
+        )
+
 regTestTests :: TestTree
 regTestTests =
     testGroup
         "regtest"
-        [ testCaseSteps "HTLC send" $ \step -> do
-            let providerConfig =
-                    BPCNode
-                        ( BitcoinProviderConfigNode
-                            { bpcnUsername = "user"
-                            , bpcnPassword = "password"
-                            , bpcnUrl = "http://localhost:18443"
-                            , bpcnNetworkId = RegTest
-                            }
-                        )
+        [ testCase "txConfirmations on non-existent transaction should be 0" $ do
+            provider <- providerFromConfig providerConfig
+            txHash <- case hexToTxHash "0000000000000000000000000000000000000000000000000000000000000000" of
+                Nothing -> assertFailure "invalid tx hash literal"
+                Just txHash -> pure txHash
+            confirmations <- runBitcoinQueryMonadIO provider $ txConfirmations txHash
+            assertEqual
+                "txConfirmations on non-existent transaction should be 0"
+                0
+                confirmations
+        , testCaseSteps "HTLC send" $ \step -> do
             provider <- providerFromConfig providerConfig
             let secret = encodeUtf8 "mysecret"
                 secretHash = sha256 secret
