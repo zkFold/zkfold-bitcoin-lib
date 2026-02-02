@@ -13,10 +13,11 @@ module ZkFold.Bitcoin.Provider.Node (
 ) where
 
 import Control.Concurrent (threadDelay)
-import Control.Exception (throwIO)
+import Control.Exception (catch, throwIO)
 import Control.Monad ((<=<))
-import Data.Aeson (ToJSON (..))
+import Data.Aeson (ToJSON (..), Value (..), (.:))
 import Data.Aeson qualified as Aeson
+import Data.Aeson.Types (parseMaybe)
 import Data.ByteString.Base16 qualified as BS16
 import Data.Bytes.Put (runPutS)
 import Data.Bytes.Serial (Serial (serialize))
@@ -184,9 +185,22 @@ nodeSubmitTx env tx =
   handleNodeError "nodeSubmitTx" <=< runNodeClient env $ submitTx (NodeRequest (SubmitTx tx))
 
 nodeTxConfirmations :: NodeApiEnv -> TxHash -> IO BlockHeight
-nodeTxConfirmations env txHash = do
-  RawTransactionInfo{..} <- handleNodeError "nodeTxConfirmations" <=< runNodeClient env $ getRawTransaction (NodeRequest (GetRawTransaction txHash))
-  pure $ fromMaybe 0 rtiConfirmations
+nodeTxConfirmations env txHash =
+  ( do
+      RawTransactionInfo{..} <- handleNodeError "nodeTxConfirmations" <=< runNodeClient env $ getRawTransaction (NodeRequest (GetRawTransaction txHash))
+      pure $ fromMaybe 0 rtiConfirmations
+  )
+    `catch` \err ->
+      case err of
+        NodeErrorResponse _ errValue | isTxNotFound errValue -> pure 0
+        _ -> throwIO err
+
+isTxNotFound :: Value -> Bool
+isTxNotFound value = case value of
+  Object obj -> case parseMaybe (.: "code") obj of
+    Just (-5 :: Int) -> True
+    _ -> False
+  _ -> False
 
 nodeWaitForTxConfirmations :: NodeApiEnv -> TxHash -> TxConfirmationsConfig -> IO ()
 nodeWaitForTxConfirmations env txHash config = do
