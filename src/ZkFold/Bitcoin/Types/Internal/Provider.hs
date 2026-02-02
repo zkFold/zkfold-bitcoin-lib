@@ -55,7 +55,7 @@ data BitcoinProvider = BitcoinProvider
   , bpNetworkId :: NetworkId
   , bpRecommendedFeeRate :: IO Satoshi
   , bpWaitForTxConfirmations :: TxHash -> TxConfirmationsConfig -> IO ()
-  , bpTxConfirmations :: TxHash -> IO (Maybe BlockHeight)
+  , bpTxConfirmations :: TxHash -> IO BlockHeight
   }
 
 -- | Create a 'BitcoinProvider' from a 'BitcoinProviderConfig'.

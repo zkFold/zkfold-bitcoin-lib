@@ -48,7 +48,7 @@ class (MonadError BitcoinMonadException m) => BitcoinQueryMonad m where
   waitForTxConfirmations :: TxHash -> TxConfirmationsConfig -> m ()
 
   -- | Get the confirmation count of a transaction.
-  txConfirmations :: TxHash -> m (Maybe BlockHeight)
+  txConfirmations :: TxHash -> m BlockHeight
 
 instance (BitcoinQueryMonad m) => BitcoinQueryMonad (ReaderT r m) where
   blockCount = lift blockCount

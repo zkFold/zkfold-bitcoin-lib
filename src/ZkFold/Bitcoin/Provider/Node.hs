@@ -12,7 +12,6 @@ module ZkFold.Bitcoin.Provider.Node (
   NodeProviderException (..),
 ) where
 
-import Control.Applicative ((<|>))
 import Control.Concurrent (threadDelay)
 import Control.Exception (throwIO)
 import Control.Monad ((<=<))
@@ -184,10 +183,10 @@ nodeSubmitTx :: NodeApiEnv -> Tx -> IO TxHash
 nodeSubmitTx env tx =
   handleNodeError "nodeSubmitTx" <=< runNodeClient env $ submitTx (NodeRequest (SubmitTx tx))
 
-nodeTxConfirmations :: NodeApiEnv -> TxHash -> IO (Maybe BlockHeight)
+nodeTxConfirmations :: NodeApiEnv -> TxHash -> IO BlockHeight
 nodeTxConfirmations env txHash = do
   RawTransactionInfo{..} <- handleNodeError "nodeTxConfirmations" <=< runNodeClient env $ getRawTransaction (NodeRequest (GetRawTransaction txHash))
-  pure rtiConfirmations
+  pure $ fromMaybe 0 rtiConfirmations
 
 nodeWaitForTxConfirmations :: NodeApiEnv -> TxHash -> TxConfirmationsConfig -> IO ()
 nodeWaitForTxConfirmations env txHash config = do
@@ -202,9 +201,11 @@ nodeWaitForTxConfirmations env txHash config = do
  where
   loop attempt lastKnown target maxAttempts = do
     confirmations <- nodeTxConfirmations env txHash
-    let current = fromMaybe 0 confirmations
-        lastKnown' = confirmations <|> lastKnown
-    if current >= target
+    let lastKnown' =
+          if confirmations == 0
+            then lastKnown
+            else Just confirmations
+    if confirmations >= target
       then pure ()
       else
         if attempt >= maxAttempts
