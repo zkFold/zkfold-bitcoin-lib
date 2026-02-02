@@ -2,7 +2,6 @@
 
 module ZkFold.Bitcoin.Test.RegTest (regTestTests) where
 
-import Control.Concurrent (threadDelay)
 import Data.Function ((&))
 import Data.Text.Encoding (encodeUtf8)
 import Haskoin (sha256, withContext, wrapPubKey)
@@ -43,7 +42,18 @@ regTestTests =
                 (fundSignedTx, fundTxId) <- runBitcoinSignerMonadIO provider [testWalletAddress] testWalletAddress [testWalletXPrvKey.key] $ signAndSubmitFundHTLC (fundTx, fundTxSelectIns)
                 step $ "fundSignedTx: " <> show fundSignedTx
                 step $ "fundTxId: " <> show fundTxId
-                threadDelay 20_000_000 -- wait for 20 seconds so that this transaction is mined.
+                runBitcoinQueryMonadIO provider $
+                    waitForTxConfirmations
+                        fundTxId
+                        ( TxConfirmationsConfig
+                            { tccConfirmations = 2
+                            , tccPollIntervalSeconds = 1
+                            , tccMaxAttempts = 30
+                            }
+                        )
+                currentBlockHeight' <- runBitcoinQueryMonadIO provider blockCount
+                step $ "currentBlockHeight': " <> show currentBlockHeight'
+                -- \^ Should be tccConfirmations + the previous block height.
                 scriptUTxOs <- runBitcoinQueryMonadIO provider $ utxosAtAddress htlc.htlcAddress
                 step $ "scriptUTxOs: " <> show scriptUTxOs
                 let scriptUTxORedeem = head scriptUTxOs
