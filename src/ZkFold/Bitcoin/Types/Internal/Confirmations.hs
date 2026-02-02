@@ -10,7 +10,7 @@ import ZkFold.Bitcoin.Types.Internal.BlockHeight (BlockHeight)
 -- | Configuration for waiting on transaction confirmations.
 data TxConfirmationsConfig = TxConfirmationsConfig
   { tccConfirmations :: BlockHeight
-  , tccPollIntervalSeconds :: Int
+  , tccPollIntervalSeconds :: Natural
   , tccMaxAttempts :: Natural
   }
   deriving stock (Show, Eq)
@@ -26,4 +26,4 @@ defaultTxConfirmationsConfig =
 
 pollIntervalMicros :: TxConfirmationsConfig -> Int
 pollIntervalMicros config =
-  max 0 (tccPollIntervalSeconds config) * 1_000_000
+  fromIntegral (tccPollIntervalSeconds config) * 1_000_000
