@@ -15,12 +15,12 @@ data TxConfirmationsConfig = TxConfirmationsConfig
   }
   deriving stock (Show, Eq)
 
--- | Default config: 1 confirmation, 10s interval, 60 attempts.
+-- | Default config: 1 confirmation, 30s interval, 60 attempts.
 defaultTxConfirmationsConfig :: TxConfirmationsConfig
 defaultTxConfirmationsConfig =
   TxConfirmationsConfig
     { tccConfirmations = 1
-    , tccPollIntervalSeconds = 10
+    , tccPollIntervalSeconds = 30
     , tccMaxAttempts = 60
     }
 

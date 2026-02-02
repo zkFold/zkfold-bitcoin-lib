@@ -3,6 +3,7 @@ module ZkFold.Bitcoin.Class (
   BitcoinBuilderMonad (..),
   BitcoinSignerMonad (..),
   network,
+  waitForTxConfirmationsDefault,
 ) where
 
 import Control.Monad.Error.Class (MonadError)
@@ -78,3 +79,8 @@ class (BitcoinBuilderMonad m) => BitcoinSignerMonad m where
 network :: (BitcoinQueryMonad m) => m Network
 network = do
   networkFromId <$> networkId
+
+-- | Wait until a transaction has the default number of confirmations.
+waitForTxConfirmationsDefault :: (BitcoinQueryMonad m) => TxHash -> m ()
+waitForTxConfirmationsDefault txHash =
+  waitForTxConfirmations txHash defaultTxConfirmationsConfig
