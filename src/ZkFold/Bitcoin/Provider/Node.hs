@@ -227,7 +227,6 @@ nodeWaitForTxConfirmations env txHash config = do
             threadDelay $ pollIntervalMicros config
             loop (attempt + 1) lastKnown' target maxAttempts
 
--- TODO: To include for mempool outputs?
 nodeUtxosAtAddress :: NodeApiEnv -> (Text, Address) -> IO [UTxO]
 nodeUtxosAtAddress env (addrText, addr) = do
   ScanTxOutSetResponse{..} <- handleNodeError "nodeUtxosAtAddress" <=< runNodeClient env $ scanTxOutSet (NodeRequest (ScanTxOutSet addrText))

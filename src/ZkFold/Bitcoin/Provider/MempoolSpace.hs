@@ -124,16 +124,23 @@ instance (Read a, Typeable a) => MimeUnrender TextPlain (PlainTextRead a) where
 instance MimeRender PlainText Tx where
   mimeRender _ = BS8.fromStrict . BS16.encode . runPutS . serialize
 
+data MempoolSpaceUtxoStatus = MempoolSpaceUtxoStatus
+  { msusConfirmed :: Bool
+  }
+  deriving stock (Show, Generic)
+  deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "msus", LowerFirst]] MempoolSpaceUtxoStatus
+
 data MempoolSpaceUtxo = MempoolSpaceUtxo
   { msuTxid :: TxHash
   , msuVout :: OutputIx
   , msuValue :: Satoshi
+  , msuStatus :: MempoolSpaceUtxoStatus
   }
   deriving stock (Show, Generic)
   deriving (FromJSON, ToJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "msu", LowerFirst]] MempoolSpaceUtxo
 
 utxoFromMempoolSpaceUtxo :: Address -> MempoolSpaceUtxo -> UTxO
-utxoFromMempoolSpaceUtxo addr (MempoolSpaceUtxo txid vout value) = UTxO (OutPoint txid vout) value addr
+utxoFromMempoolSpaceUtxo addr (MempoolSpaceUtxo txid vout value _) = UTxO (OutPoint txid vout) value addr
 
 newtype MempoolSpaceFeeResponse = MempoolSpaceFeeResponse
   { msfFastestFee :: Satoshi
@@ -190,10 +197,12 @@ mempoolSpaceBlockHash :: MempoolSpaceApiEnv -> BlockHeight -> IO BlockHash
 mempoolSpaceBlockHash env bh =
   handleMempoolSpaceError "mempoolSpaceBlockHash" . fmap unPlainTextRead <=< runMempoolSpaceClient env $ blockHash bh
 
--- TODO: Does it return for mempool outputs?
 mempoolSpaceUtxosAtAddress :: MempoolSpaceApiEnv -> (Text, Address) -> IO [UTxO]
 mempoolSpaceUtxosAtAddress env (addrText, addr) =
-  handleMempoolSpaceError "mempoolSpaceUtxosAtAddress" . fmap (fmap (utxoFromMempoolSpaceUtxo addr)) <=< runMempoolSpaceClient env $ addressUtxos addrText
+  handleMempoolSpaceError "mempoolSpaceUtxosAtAddress"
+    . fmap (fmap (utxoFromMempoolSpaceUtxo addr) . filter (msusConfirmed . msuStatus))
+    <=< runMempoolSpaceClient env
+    $ addressUtxos addrText
 
 mempoolSpaceSubmitTx :: MempoolSpaceApiEnv -> Tx -> IO TxHash
 mempoolSpaceSubmitTx env tx =
