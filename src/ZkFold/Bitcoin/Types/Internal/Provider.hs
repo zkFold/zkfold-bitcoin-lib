@@ -17,6 +17,7 @@ import ZkFold.Bitcoin.Types.Internal.BlockHash (BlockHash)
 import ZkFold.Bitcoin.Types.Internal.BlockHeader (BlockHeader)
 import ZkFold.Bitcoin.Types.Internal.BlockHeight (BlockHeight)
 import ZkFold.Bitcoin.Types.Internal.Common (LowerFirst, Satoshi)
+import ZkFold.Bitcoin.Types.Internal.Confirmations (TxConfirmationsConfig)
 import ZkFold.Bitcoin.Types.Internal.NetworkId (NetworkId, networkFromId)
 import ZkFold.Bitcoin.Types.Internal.UTxO (UTxO)
 
@@ -53,6 +54,8 @@ data BitcoinProvider = BitcoinProvider
   , bpSubmitTx :: Tx -> IO TxHash
   , bpNetworkId :: NetworkId
   , bpRecommendedFeeRate :: IO Satoshi
+  , bpWaitForTxConfirmations :: TxHash -> TxConfirmationsConfig -> IO ()
+  , bpTxConfirmations :: TxHash -> IO BlockHeight
   }
 
 -- | Create a 'BitcoinProvider' from a 'BitcoinProviderConfig'.
@@ -71,6 +74,8 @@ providerFromConfig (BPCNode (BitcoinProviderConfigNode{..})) = do
       , bpSubmitTx = nodeSubmitTx env
       , bpNetworkId = bpcnNetworkId
       , bpRecommendedFeeRate = nodeRecommendedFeeRate env
+      , bpWaitForTxConfirmations = nodeWaitForTxConfirmations env
+      , bpTxConfirmations = nodeTxConfirmations env
       }
 providerFromConfig (BPCMempoolSpace (BitcoinProviderConfigMempoolSpace{..})) = do
   env <- newMempoolSpaceApiEnv bpcmsNetworkId
@@ -86,6 +91,8 @@ providerFromConfig (BPCMempoolSpace (BitcoinProviderConfigMempoolSpace{..})) = d
       , bpSubmitTx = mempoolSpaceSubmitTx env
       , bpNetworkId = bpcmsNetworkId
       , bpRecommendedFeeRate = mempoolSpaceRecommendedFeeRate env
+      , bpWaitForTxConfirmations = mempoolSpaceWaitForTxConfirmations env
+      , bpTxConfirmations = mempoolSpaceTxConfirmations env
       }
 
 resolveAddress :: Address -> NetworkId -> IO Text

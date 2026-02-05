@@ -2,33 +2,44 @@
 
 module ZkFold.Bitcoin.Test.RegTest (regTestTests) where
 
-import Control.Concurrent (threadDelay)
 import Data.Function ((&))
 import Data.Text.Encoding (encodeUtf8)
-import Haskoin (sha256, withContext, wrapPubKey)
+import Haskoin (hexToTxHash, sha256, withContext, wrapPubKey)
 import Haskoin qualified
 import Test.Tasty
-import Test.Tasty.HUnit (testCaseSteps)
+import Test.Tasty.HUnit (assertEqual, assertFailure, testCase, testCaseSteps)
 import ZkFold.Bitcoin.Class (BitcoinQueryMonad (..))
 import ZkFold.Bitcoin.Examples.HTLC
 import ZkFold.Bitcoin.IO
 import ZkFold.Bitcoin.Test.Constants (testWalletAddress, testWalletAddress2, testWalletXPrvKey, testWalletXPrvKey2, testWalletXPubKey, testWalletXPubKey2)
 import ZkFold.Bitcoin.Types
 
+providerConfig :: BitcoinProviderConfig
+providerConfig =
+    BPCNode
+        ( BitcoinProviderConfigNode
+            { bpcnUsername = "user"
+            , bpcnPassword = "password"
+            , bpcnUrl = "http://localhost:18443"
+            , bpcnNetworkId = RegTest
+            }
+        )
+
 regTestTests :: TestTree
 regTestTests =
     testGroup
         "regtest"
-        [ testCaseSteps "HTLC send" $ \step -> do
-            let providerConfig =
-                    BPCNode
-                        ( BitcoinProviderConfigNode
-                            { bpcnUsername = "user"
-                            , bpcnPassword = "password"
-                            , bpcnUrl = "http://localhost:18443"
-                            , bpcnNetworkId = RegTest
-                            }
-                        )
+        [ testCase "txConfirmations on non-existent transaction should be 0" $ do
+            provider <- providerFromConfig providerConfig
+            txHash <- case hexToTxHash "0000000000000000000000000000000000000000000000000000000000000000" of
+                Nothing -> assertFailure "invalid tx hash literal"
+                Just txHash -> pure txHash
+            confirmations <- runBitcoinQueryMonadIO provider $ txConfirmations txHash
+            assertEqual
+                "txConfirmations on non-existent transaction should be 0"
+                0
+                confirmations
+        , testCaseSteps "HTLC send" $ \step -> do
             provider <- providerFromConfig providerConfig
             let secret = encodeUtf8 "mysecret"
                 secretHash = sha256 secret
@@ -43,7 +54,22 @@ regTestTests =
                 (fundSignedTx, fundTxId) <- runBitcoinSignerMonadIO provider [testWalletAddress] testWalletAddress [testWalletXPrvKey.key] $ signAndSubmitFundHTLC (fundTx, fundTxSelectIns)
                 step $ "fundSignedTx: " <> show fundSignedTx
                 step $ "fundTxId: " <> show fundTxId
-                threadDelay 20_000_000 -- wait for 20 seconds so that this transaction is mined.
+                let confirmations = 2
+                runBitcoinQueryMonadIO provider $
+                    waitForTxConfirmations
+                        fundTxId
+                        ( TxConfirmationsConfig
+                            { tccConfirmations = confirmations
+                            , tccPollIntervalSeconds = 1
+                            , tccMaxAttempts = 30
+                            }
+                        )
+                currentBlockHeight' <- runBitcoinQueryMonadIO provider blockCount
+                step $ "currentBlockHeight': " <> show currentBlockHeight'
+                assertEqual
+                    "block height advanced by tccConfirmations"
+                    (currentBlockHeight + confirmations)
+                    currentBlockHeight'
                 scriptUTxOs <- runBitcoinQueryMonadIO provider $ utxosAtAddress htlc.htlcAddress
                 step $ "scriptUTxOs: " <> show scriptUTxOs
                 let scriptUTxORedeem = head scriptUTxOs

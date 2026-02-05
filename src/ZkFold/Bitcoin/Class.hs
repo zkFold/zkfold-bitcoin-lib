@@ -3,18 +3,18 @@ module ZkFold.Bitcoin.Class (
   BitcoinBuilderMonad (..),
   BitcoinSignerMonad (..),
   network,
+  waitForTxConfirmationsDefault,
 ) where
 
 import Control.Monad.Error.Class (MonadError)
 import Control.Monad.Reader (ReaderT (..), lift)
-import Haskoin (Address, Tx, TxHash, Network)
+import Haskoin (Address, Network, Tx, TxHash)
 import ZkFold.Bitcoin.Errors (BitcoinMonadException)
 import ZkFold.Bitcoin.Types
-import ZkFold.Bitcoin.Types.Internal.Common (Satoshi)
 import ZkFold.Bitcoin.Types.Internal.Skeleton (TxSkeleton)
 
 class (MonadError BitcoinMonadException m) => BitcoinQueryMonad m where
-  {-# MINIMAL blockCount, bestBlockHash, blockHeader, blockHash, utxosAtAddress, submitTx, networkId, recommendedFeeRate #-}
+  {-# MINIMAL blockCount, bestBlockHash, blockHeader, blockHash, utxosAtAddress, submitTx, networkId, recommendedFeeRate, waitForTxConfirmations, txConfirmations #-}
 
   -- | Get the height of the most-work fully-validated chain.
   blockCount :: m BlockHeight
@@ -44,6 +44,12 @@ class (MonadError BitcoinMonadException m) => BitcoinQueryMonad m where
   -- | Get the recommended fee rate in satoshi per virtual byte of the network for the transaction to get quickly confirmed (i.e. in 1 block).
   recommendedFeeRate :: m Satoshi
 
+  -- | Wait until a transaction has at least the given number of confirmations.
+  waitForTxConfirmations :: TxHash -> TxConfirmationsConfig -> m ()
+
+  -- | Get the confirmation count of a transaction.
+  txConfirmations :: TxHash -> m BlockHeight
+
 instance (BitcoinQueryMonad m) => BitcoinQueryMonad (ReaderT r m) where
   blockCount = lift blockCount
   bestBlockHash = lift bestBlockHash
@@ -53,6 +59,8 @@ instance (BitcoinQueryMonad m) => BitcoinQueryMonad (ReaderT r m) where
   submitTx = lift . submitTx
   networkId = lift networkId
   recommendedFeeRate = lift recommendedFeeRate
+  waitForTxConfirmations txHash config = lift $ waitForTxConfirmations txHash config
+  txConfirmations txHash = lift $ txConfirmations txHash
 
 class (BitcoinQueryMonad m) => BitcoinBuilderMonad m where
   {-# MINIMAL buildTx #-}
@@ -72,6 +80,11 @@ class (BitcoinBuilderMonad m) => BitcoinSignerMonad m where
   signTx :: (Tx, [UTxO]) -> m Tx
 
 -- | Get the 'Network' of the Bitcoin network.
-network :: BitcoinQueryMonad m => m Network
+network :: (BitcoinQueryMonad m) => m Network
 network = do
   networkFromId <$> networkId
+
+-- | Wait until a transaction has the default number of confirmations.
+waitForTxConfirmationsDefault :: (BitcoinQueryMonad m) => TxHash -> m ()
+waitForTxConfirmationsDefault txHash =
+  waitForTxConfirmations txHash defaultTxConfirmationsConfig

@@ -4,12 +4,16 @@ module ZkFold.Bitcoin.Provider.Node (
   nodeBlockHeader,
   nodeBlockHash,
   nodeSubmitTx,
+  nodeTxConfirmations,
   nodeUtxosAtAddress,
   nodeRecommendedFeeRate,
+  nodeWaitForTxConfirmations,
   module ZkFold.Bitcoin.Provider.Node.ApiEnv,
   NodeProviderException (..),
 ) where
 
+import Control.Concurrent (threadDelay)
+import Control.Exception (catch, throwIO)
 import Control.Monad ((<=<))
 import Data.Aeson (ToJSON (..))
 import Data.Aeson qualified as Aeson
@@ -17,6 +21,8 @@ import Data.ByteString.Base16 qualified as BS16
 import Data.Bytes.Put (runPutS)
 import Data.Bytes.Serial (Serial (serialize))
 import Data.Function ((&))
+import Data.List (isInfixOf)
+import Data.Maybe (fromMaybe)
 import Data.Proxy (Proxy (..))
 import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8)
@@ -35,6 +41,7 @@ import Servant.Client (
   ClientM,
   client,
  )
+import ZkFold.Bitcoin.Errors (BitcoinMonadException (..))
 import ZkFold.Bitcoin.Provider.Node.ApiEnv
 import ZkFold.Bitcoin.Provider.Node.Class (ToJSONRPC (..))
 import ZkFold.Bitcoin.Provider.Node.Exception (NodeProviderException (..))
@@ -44,6 +51,7 @@ import ZkFold.Bitcoin.Types.Internal.BlockHash (BlockHash)
 import ZkFold.Bitcoin.Types.Internal.BlockHeader (BlockHeader)
 import ZkFold.Bitcoin.Types.Internal.BlockHeight (BlockHeight)
 import ZkFold.Bitcoin.Types.Internal.Common (Bitcoin, LowerFirst, OutputIx, Satoshi, btcToSatoshi)
+import ZkFold.Bitcoin.Types.Internal.Confirmations (TxConfirmationsConfig (..), pollIntervalMicros)
 import ZkFold.Bitcoin.Types.Internal.UTxO
 
 data GetBlockCount = GetBlockCount
@@ -74,6 +82,18 @@ newtype SubmitTx = SubmitTx Tx
 instance ToJSONRPC SubmitTx where
   toMethod = const "sendrawtransaction"
   toParams (SubmitTx tx) = Just (Aeson.Array $ fromList [serialize tx & runPutS & BS16.encode & decodeUtf8 & Aeson.String])
+
+newtype GetRawTransaction = GetRawTransaction TxHash
+
+instance ToJSONRPC GetRawTransaction where
+  toMethod = const "getrawtransaction"
+  toParams (GetRawTransaction txHash) = Just (Aeson.Array $ fromList [toJSON txHash, Aeson.Bool True])
+
+newtype RawTransactionInfo = RawTransactionInfo
+  { rtiConfirmations :: Maybe BlockHeight
+  }
+  deriving stock (Show, Generic)
+  deriving (FromJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "rti", LowerFirst]] RawTransactionInfo
 
 newtype ScanTxOutSet = ScanTxOutSet Text
 
@@ -123,6 +143,7 @@ type NodeApi =
     :<|> ReqBody '[JSON] (NodeRequest GetBlockHeader) :> Post '[JSON] (NodeResponse BlockHeader)
     :<|> ReqBody '[JSON] (NodeRequest GetBlockHash) :> Post '[JSON] (NodeResponse BlockHash)
     :<|> ReqBody '[JSON] (NodeRequest SubmitTx) :> Post '[JSON] (NodeResponse TxHash)
+    :<|> ReqBody '[JSON] (NodeRequest GetRawTransaction) :> Post '[JSON] (NodeResponse RawTransactionInfo)
     :<|> ReqBody '[JSON] (NodeRequest ScanTxOutSet) :> Post '[JSON] (NodeResponse ScanTxOutSetResponse)
     :<|> ReqBody '[JSON] (NodeRequest EstimateSmartFee) :> Post '[JSON] (NodeResponse EstimateSmartFeeResponse)
 
@@ -131,6 +152,7 @@ bestBlockHash :: NodeRequest GetBestBlockHash -> ClientM (NodeResponse BlockHash
 blockHeader :: NodeRequest GetBlockHeader -> ClientM (NodeResponse BlockHeader)
 blockHash :: NodeRequest GetBlockHash -> ClientM (NodeResponse BlockHash)
 submitTx :: NodeRequest SubmitTx -> ClientM (NodeResponse TxHash)
+getRawTransaction :: NodeRequest GetRawTransaction -> ClientM (NodeResponse RawTransactionInfo)
 scanTxOutSet :: NodeRequest ScanTxOutSet -> ClientM (NodeResponse ScanTxOutSetResponse)
 estimateSmartFee :: NodeRequest EstimateSmartFee -> ClientM (NodeResponse EstimateSmartFeeResponse)
 blockCount
@@ -138,6 +160,7 @@ blockCount
   :<|> blockHeader
   :<|> blockHash
   :<|> submitTx
+  :<|> getRawTransaction
   :<|> scanTxOutSet
   :<|> estimateSmartFee = client @NodeApi Proxy
 
@@ -160,6 +183,49 @@ nodeBlockHash env givenHeight =
 nodeSubmitTx :: NodeApiEnv -> Tx -> IO TxHash
 nodeSubmitTx env tx =
   handleNodeError "nodeSubmitTx" <=< runNodeClient env $ submitTx (NodeRequest (SubmitTx tx))
+
+nodeTxConfirmations :: NodeApiEnv -> TxHash -> IO BlockHeight
+nodeTxConfirmations env txHash =
+  ( do
+      RawTransactionInfo{..} <- handleNodeError "nodeTxConfirmations" <=< runNodeClient env $ getRawTransaction (NodeRequest (GetRawTransaction txHash))
+      pure $ fromMaybe 0 rtiConfirmations
+  )
+    `catch` \err ->
+      case err of
+        NodeApiError _ errValue | isTxNotFound (show errValue) -> pure 0
+        _ -> throwIO err
+
+isTxNotFound :: String -> Bool
+isTxNotFound errStr =
+  notFoundMessage `isInfixOf` errStr
+ where
+  notFoundMessage = "No such mempool or blockchain transaction"
+
+nodeWaitForTxConfirmations :: NodeApiEnv -> TxHash -> TxConfirmationsConfig -> IO ()
+nodeWaitForTxConfirmations env txHash config = do
+  let target = tccConfirmations config
+      maxAttempts = tccMaxAttempts config
+  if target == 0
+    then pure ()
+    else
+      if maxAttempts == 0
+        then throwIO $ WaitForTxConfirmationsTimeout txHash config Nothing
+        else loop 1 Nothing target maxAttempts
+ where
+  loop attempt lastKnown target maxAttempts = do
+    confirmations <- nodeTxConfirmations env txHash
+    let lastKnown' =
+          if confirmations == 0
+            then lastKnown
+            else Just confirmations
+    if confirmations >= target
+      then pure ()
+      else
+        if attempt >= maxAttempts
+          then throwIO $ WaitForTxConfirmationsTimeout txHash config lastKnown'
+          else do
+            threadDelay $ pollIntervalMicros config
+            loop (attempt + 1) lastKnown' target maxAttempts
 
 -- TODO: To include for mempool outputs?
 nodeUtxosAtAddress :: NodeApiEnv -> (Text, Address) -> IO [UTxO]

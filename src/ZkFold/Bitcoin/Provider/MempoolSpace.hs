@@ -11,12 +11,17 @@ module ZkFold.Bitcoin.Provider.MempoolSpace (
   mempoolSpaceBlockHash,
   mempoolSpaceUtxosAtAddress,
   mempoolSpaceSubmitTx,
+  mempoolSpaceTxConfirmations,
   mempoolSpaceRecommendedFeeRate,
+  mempoolSpaceWaitForTxConfirmations,
   MempoolSpaceApiError (..),
 ) where
 
+import Control.Concurrent (threadDelay)
 import Control.Exception (Exception, throwIO)
 import Control.Monad ((<=<))
+import Data.Aeson (FromJSON (..), (.:), (.:?))
+import Data.Aeson qualified as Aeson
 import Data.ByteString (ByteString)
 import Data.ByteString.Base16 qualified as BS16
 import Data.ByteString.Char8 qualified as BS8
@@ -50,11 +55,13 @@ import Servant.Client (
 import Servant.Client qualified as Servant
 import Text.Read (readMaybe)
 import Type.Reflection (eqTypeRep, typeRep)
+import ZkFold.Bitcoin.Errors (BitcoinMonadException (..))
 import ZkFold.Bitcoin.Provider.Common (newServantClientEnv)
 import ZkFold.Bitcoin.Types.Internal.BlockHash
 import ZkFold.Bitcoin.Types.Internal.BlockHeader
 import ZkFold.Bitcoin.Types.Internal.BlockHeight
 import ZkFold.Bitcoin.Types.Internal.Common (LowerFirst, OutputIx, Satoshi)
+import ZkFold.Bitcoin.Types.Internal.Confirmations (TxConfirmationsConfig (..), pollIntervalMicros)
 import ZkFold.Bitcoin.Types.Internal.NetworkId (NetworkId (..))
 import ZkFold.Bitcoin.Types.Internal.UTxO
 
@@ -134,6 +141,19 @@ newtype MempoolSpaceFeeResponse = MempoolSpaceFeeResponse
   deriving stock (Show, Generic)
   deriving (FromJSON) via CustomJSON '[FieldLabelModifier '[StripPrefix "msf", LowerFirst]] MempoolSpaceFeeResponse
 
+data MempoolSpaceTxStatus = MempoolSpaceTxStatus
+  { mstsConfirmed :: Bool
+  , mstsBlockHeight :: Maybe BlockHeight
+  }
+  deriving stock (Show, Generic)
+
+instance FromJSON MempoolSpaceTxStatus where
+  parseJSON =
+    Aeson.withObject "MempoolSpaceTxStatus" $ \obj ->
+      MempoolSpaceTxStatus
+        <$> obj .: "confirmed"
+        <*> obj .:? "block_height"
+
 type MempoolSpaceApi =
   "blocks" :> "tip" :> "height" :> Get '[TextPlain] (PlainTextRead BlockHeight) -- Unfortunately, mempool.space returns a plain text response instead of JSON.
     :<|> "blocks" :> "tip" :> "hash" :> Get '[TextPlain] (PlainTextRead BlockHash)
@@ -141,6 +161,7 @@ type MempoolSpaceApi =
     :<|> "block-height" :> Capture "blockHeight" BlockHeight :> Get '[TextPlain] (PlainTextRead BlockHash)
     :<|> "address" :> Capture "address" Text :> "utxo" :> Get '[JSON] [MempoolSpaceUtxo]
     :<|> "tx" :> ReqBody '[PlainText] Tx :> Post '[TextPlain] (PlainTextRead TxHash)
+    :<|> "tx" :> Capture "txid" Text :> "status" :> Get '[JSON] MempoolSpaceTxStatus
     :<|> "v1" :> "fees" :> "recommended" :> Get '[JSON] MempoolSpaceFeeResponse
 
 blockCount :: ClientM (PlainTextRead BlockHeight)
@@ -149,8 +170,9 @@ blockHeader :: BlockHash -> ClientM (PlainTextRead BlockHeader)
 blockHash :: BlockHeight -> ClientM (PlainTextRead BlockHash)
 addressUtxos :: Text -> ClientM [MempoolSpaceUtxo]
 txHash :: Tx -> ClientM (PlainTextRead TxHash)
+txStatus :: Text -> ClientM MempoolSpaceTxStatus
 recommendedFeeRate :: ClientM MempoolSpaceFeeResponse
-blockCount :<|> blockTipHash :<|> blockHeader :<|> blockHash :<|> addressUtxos :<|> txHash :<|> recommendedFeeRate = client @MempoolSpaceApi Proxy
+blockCount :<|> blockTipHash :<|> blockHeader :<|> blockHash :<|> addressUtxos :<|> txHash :<|> txStatus :<|> recommendedFeeRate = client @MempoolSpaceApi Proxy
 
 mempoolSpaceBlockCount :: MempoolSpaceApiEnv -> IO BlockHeight
 mempoolSpaceBlockCount env =
@@ -180,3 +202,46 @@ mempoolSpaceSubmitTx env tx =
 mempoolSpaceRecommendedFeeRate :: MempoolSpaceApiEnv -> IO Satoshi
 mempoolSpaceRecommendedFeeRate env =
   handleMempoolSpaceError "mempoolSpaceRecommendedFeeRate" . fmap (\MempoolSpaceFeeResponse{..} -> msfFastestFee) <=< runMempoolSpaceClient env $ recommendedFeeRate
+
+mempoolSpaceTxConfirmations :: MempoolSpaceApiEnv -> TxHash -> IO BlockHeight
+mempoolSpaceTxConfirmations env txId = do
+  MempoolSpaceTxStatus{..} <- handleMempoolSpaceError "mempoolSpaceTxStatus" <=< runMempoolSpaceClient env $ txStatus (txHashToText txId)
+  if not mstsConfirmed
+    then pure 0
+    else case mstsBlockHeight of
+      Nothing -> pure 0
+      Just confirmedHeight -> do
+        tipHeight <- mempoolSpaceBlockCount env
+        if tipHeight >= confirmedHeight
+          then pure (tipHeight - confirmedHeight + 1)
+          else pure 0
+
+mempoolSpaceWaitForTxConfirmations :: MempoolSpaceApiEnv -> TxHash -> TxConfirmationsConfig -> IO ()
+mempoolSpaceWaitForTxConfirmations env txId config
+  | tccConfirmations config == 0 = pure ()
+  | tccMaxAttempts config == 0 = throwIO $ WaitForTxConfirmationsTimeout txId config Nothing
+  | otherwise = loop 1 Nothing
+ where
+  loop attempt lastKnown =
+    do
+      confirmations <- mempoolSpaceTxConfirmations env txId
+      let lastKnown' =
+            if confirmations == 0
+              then lastKnown
+              else Just confirmations
+      if confirmations >= tccConfirmations config
+        then pure ()
+        else waitAndRetry attempt lastKnown'
+  waitAndRetry attempt lastKnown =
+    if attempt >= tccMaxAttempts config
+      then
+        throwIO $ WaitForTxConfirmationsTimeout txId config lastKnown
+      else do
+        threadDelay $ pollIntervalMicros config
+        loop (attempt + 1) lastKnown
+
+txHashToText :: TxHash -> Text
+txHashToText txHashValue =
+  case Aeson.toJSON txHashValue of
+    Aeson.String txHashText -> txHashText
+    _ -> error "TxHash JSON encoding is not a string"
