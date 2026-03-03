@@ -28,13 +28,12 @@ encodeNumberBytes n = runPutS $ do
 -}
 encodeWord32 :: Word32 -> [Word8]
 encodeWord32 n =
-  reverse $
-    if toBytes == mempty
-      then toBytes
-      else
-        if head toBytes >= 0x80
-          then 0x00 : toBytes
-          else toBytes
+  if null toBytes
+    then toBytes
+    else
+      if last toBytes >= 0x80
+        then toBytes ++ [0x00]
+        else toBytes
  where
   toBytes = toBytes' n
   toBytes' :: Word32 -> [Word8]
